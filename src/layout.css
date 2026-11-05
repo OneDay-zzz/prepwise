@@ -437,3 +437,22 @@ kbd{font:inherit;font-size:calc(11px*var(--font-scale));padding:1px 5px;border:1
 :root[data-theme=dark] .app-columns .note-list.is-note-dragging .folder-manager::before{background:#20212a}
 /* The browser would otherwise follow the pinned folders back up when a drag ends */
 .app-columns .note-list{overflow-anchor:none}
+
+.doc-chat-sessions{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--border)}
+.doc-chat-sessions select{flex:1;min-width:0;width:auto;padding:5px 6px;border:1px solid var(--border);border-radius:6px;background:#fff;color:inherit;font:inherit;font-size:calc(12px*var(--font-scale))}
+.doc-chat-sessions .small-button{display:inline-flex;align-items:center;gap:3px;flex-shrink:0;padding:5px 8px;white-space:nowrap}
+.doc-chat-sessions .icon-button{flex-shrink:0;width:28px;height:28px}
+.doc-chat-sessions button:disabled{opacity:.4;cursor:default}
+.doc-chat-long{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:7px 9px;border-radius:7px;background:#f3f1f8;color:#6d6a75;font-size:calc(11px*var(--font-scale))}
+:root[data-theme=dark] .doc-chat-sessions select{background:#262732;color:#dcd8e6}
+:root[data-theme=dark] .doc-chat-long{background:#2a2b36;color:#a7a3b8}
+
+.doc-chat-scroll{position:relative;flex:1;min-height:0;display:flex}
+.doc-chat-scroll>.doc-chat-messages{flex:1;min-width:0}
+.doc-chat-messages:focus{outline:none}
+.doc-chat-jump{position:absolute;right:12px;bottom:10px;z-index:2;display:flex;flex-direction:column;gap:5px}
+.doc-chat-jump button{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#fff;border:1px solid var(--border);color:#5240b8;box-shadow:0 2px 8px #2a204022}
+.doc-chat-jump button:hover{background:#ece8f8}
+.doc-chat-notice{margin:8px 12px 0}
+:root[data-theme=dark] .doc-chat-jump button{background:#2a2b36;border-color:#3d3e4c;color:#cdbcf8}
+:root[data-theme=dark] .doc-chat-jump button:hover{background:#39304f}

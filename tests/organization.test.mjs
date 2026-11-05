@@ -370,3 +370,30 @@ test('folders stay alphabetical until reordered, and new ones go last',async()=>
   const note={...newNote('leetcode',false),id:'n',order:3};
   assert.equal(move({...w,notes:[note]},'n','resume').notes[0].order,undefined,'a note starts fresh in a new section');
 });
+
+test('adding a whiteboard picture to a document',async()=>{
+  const {addDrawing,boardSelection,drawingFileName}=await import('../src/whiteboard-export.ts');
+  const {findNoteUpload}=await import('../src/note-images.ts');
+  const elements=[{id:'box'},{id:'label',containerId:'box'},{id:'frame'},{id:'inside',frameId:'frame'},{id:'other'}];
+  assert.deepEqual(boardSelection(elements,{box:true}).map(e=>e.id),['box','label'],'a shape keeps its label');
+  assert.deepEqual(boardSelection(elements,{frame:true}).map(e=>e.id),['frame','inside'],'a frame keeps its contents');
+  assert.deepEqual(boardSelection(elements,{}),[]);
+  const upload=name=>({id:'drawing-1',section:'leetcode',name,type:'image/svg+xml',size:1,addedAt:'2026-01-01T00:00:00.000Z'});
+  assert.equal(drawingFileName('Two pointers: part (1)!','leetcode',[]),'Two-pointers-part-1-drawing.svg');
+  assert.equal(drawingFileName('算法 笔记','leetcode',[]),'算法-笔记-drawing.svg');
+  assert.equal(drawingFileName('','leetcode',[]),'whiteboard-drawing.svg');
+  assert.equal(drawingFileName('Heap','leetcode',[upload('HEAP-drawing.svg'),upload('Heap-drawing-2.svg')]),'Heap-drawing-3.svg');
+  assert.equal(drawingFileName('Heap','resume',[upload('Heap-drawing.svg')]),'Heap-drawing.svg','each section has its own names');
+  const note={...newNote('leetcode',false),id:'n',body:'# Heap\n\ntext\n\n',updatedAt:'2020-01-01T00:00:00.000Z'};
+  const inFolder={...newNote('leetcode',false),id:'f',body:'',folderId:'x'};
+  const w={...initialWorkspace(),notes:[note,inFolder],folders:[{id:'x',section:'leetcode',name:'X'}]};
+  const file=upload('Heap-drawing.svg');
+  const next=addDrawing(w,'n',file,'2026-01-01T00:00:00.000Z');
+  assert.equal(next.notes[0].body,'# Heap\n\ntext\n\n![Drawing](_gallery/Heap-drawing.svg)\n');
+  assert.equal(next.notes[0].updatedAt,'2026-01-01T00:00:00.000Z');
+  assert.deepEqual(next.uploads,[file]);
+  assert.doesNotThrow(()=>validateWorkspace(next));
+  assert.equal(findNoteUpload('_gallery/Heap-drawing.svg','leetcode',next.uploads),file,'the app finds it by name');
+  assert.equal(addDrawing(w,'f',file).notes[1].body,'![Drawing](../_gallery/Heap-drawing.svg)\n','a note in a folder links up one level');
+  assert.equal(addDrawing(w,'gone',file),w);
+});

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, AtSign, Check, ChevronDown, ChevronRight, LoaderCircle, RotateCcw, Sparkles, Square, Trash2, TriangleAlert, X } from 'lucide-react';
-import { activeMention, changeLines, chatModels, diffCounts, diffHunks, matchContext, messageContext, modelName, tokenTotal, type ContextItem, type ChatChange, type ChatMessage, type ChatModel } from './doc-chat-model';
-import { applyAnyway, chatContextItems, chatModel, chatState, clearChat, discardChange, loadChat, sendChat, setChatModel, stopChat, subscribeChats, undoChange } from './doc-chat-store';
+import { ArrowDown, ArrowUp, AtSign, Check, ChevronDown, ChevronRight, LoaderCircle, Plus, RotateCcw, Sparkles, Square, Trash2, TriangleAlert, X } from 'lucide-react';
+import { activeMention, LONG_CHAT_TOKENS, changeLines, chatModels, diffCounts, diffHunks, matchContext, messageContext, modelName, tokenTotal, type ContextItem, type ChatChange, type ChatMessage, type ChatModel } from './doc-chat-model';
+import { applyAnyway, chatContextItems, chatIndex, chatModel, chatState, chatVersion, deleteThread, discardChange, loadChat, newThread, selectThread, sendChat, setChatModel, stopChat, subscribeChats, undoChange } from './doc-chat-store';
 import { clampColumn, columnLimits } from './layout-settings';
 
 const DEFAULT_WIDTH=360;
@@ -12,7 +12,7 @@ const SHARE_WIDTH=680;
 const DOC_CHAT={intro:'Ask about this doc, or ask for a change. Claude focuses on this doc and can read your whole workspace too.',placeholder:'Message Claude about this doc. Type @ to add another…',suggestions:['Summarize this doc','What’s missing or unclear here?','Quiz me on this doc','Tighten the writing in this doc']};
 const WORKSPACE={intro:'Ask about anything in your workspace: documents, uploaded files, whiteboard text, and your calendar. You can ask for changes too, like adding a milestone.',placeholder:'Message Claude. Type @ to focus on a doc and save tokens…',suggestions:['What should I focus on next?','What’s coming up on my calendar?','Summarize my prep so far','Which topics look weakest?']};
 
-function ChangeCard({noteId,messageId,index,change,onOpen}: {noteId:string;messageId:string;index:number;change:ChatChange;onOpen:(id:string)=>void}) {
+function ChangeCard({chatId,noteId,messageId,index,change,onOpen}: {chatId:string;noteId:string;messageId:string;index:number;change:ChatChange;onOpen:(id:string)=>void}) {
   const [open,setOpen]=useState(false);
   const [blocked,setBlocked]=useState(false);
   const lines=changeLines(change);
@@ -28,7 +28,7 @@ function ChangeCard({noteId,messageId,index,change,onOpen}: {noteId:string;messa
     </div>
     <div className="chat-change-actions">
       <button className="text-button" aria-expanded={open} onClick={()=>setOpen(!open)}>{open ? <ChevronDown size={13}/> : <ChevronRight size={13}/>} Changes</button>
-      {change.status==='applied' && !plans && change.noteId!==noteId && <button className="text-button" onClick={()=>onOpen(change.noteId)}>Open</button>}
+      {change.status==='applied' && !plans && change.noteId!==chatId && <button className="text-button" onClick={()=>onOpen(change.noteId)}>Open</button>}
       {change.status==='applied' && <button className="text-button" onClick={()=>setBlocked(!undoChange(noteId,messageId,index,change))}>Undo</button>}
       {change.status==='conflict' && <><button className="text-button" onClick={()=>applyAnyway(noteId,messageId,index,change)}>Use it anyway</button><button className="text-button" onClick={()=>discardChange(noteId,messageId,index,change)}>Discard</button></>}
     </div>
@@ -37,14 +37,14 @@ function ChangeCard({noteId,messageId,index,change,onOpen}: {noteId:string;messa
   </div>;
 }
 
-function Message({noteId,message,onOpen}: {noteId:string;message:ChatMessage;onOpen:(id:string)=>void}) {
+function Message({chatId,noteId,message,onOpen}: {chatId:string;noteId:string;message:ChatMessage;onOpen:(id:string)=>void}) {
   if(message.role==='user') return <div className="chat-message is-user">{message.text}</div>;
   return <div className={`chat-message is-assistant ${message.error ? 'is-error' : ''}`}>
     {!!message.tools?.length && <details className="chat-tools"><summary>{message.tools.length} {message.tools.length===1 ? 'step' : 'steps'}</summary>{message.tools.map((tool,i)=><div key={i}>{tool}</div>)}</details>}
     {message.text && <div className="chat-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown></div>}
     {message.model && <small className="chat-model" title={message.usage ? `${message.usage.input.toLocaleString()} new input, ${message.usage.cacheWrite.toLocaleString()} newly cached, ${message.usage.cacheRead.toLocaleString()} reused from cache, ${message.usage.output.toLocaleString()} output` : undefined}>{modelName(message.model)}{message.usage ? ` · ${tokenTotal(message.usage).toLocaleString()} tokens` : ''}</small>}
     {message.stopped && <small className="chat-stopped">Stopped. Nothing from this answer was changed.</small>}
-    {message.changes?.map((change,i)=><ChangeCard key={i} noteId={noteId} messageId={message.id} index={i} change={change} onOpen={onOpen}/>)}
+    {message.changes?.map((change,i)=><ChangeCard key={i} chatId={chatId} noteId={noteId} messageId={message.id} index={i} change={change} onOpen={onOpen}/>)}
     {message.notes?.map((note,i)=><p key={i} className="chat-change-note is-warning"><TriangleAlert size={13}/>{note}</p>)}
   </div>;
 }
@@ -52,9 +52,14 @@ function Message({noteId,message,onOpen}: {noteId:string;message:ChatMessage;onO
 /** A chat shown at the side of what it's about: one document's window, or the whole page for the workspace chat. */
 export default function DocChat({chatId,title,label,host,everything=false,width,onWidth,onClose,onOpenNote}: {chatId:string;title:string;label:string;host:string;everything?:boolean;width:number|null;onWidth:(width:number|null)=>void;onClose:()=>void;onOpenNote:(id:string)=>void}) {
   const copy=everything ? WORKSPACE : DOC_CHAT;
-  const state=useSyncExternalStore(subscribeChats,()=>chatState(chatId));
+  useSyncExternalStore(subscribeChats,chatVersion);
+  const index=chatIndex(chatId);
+  const threadId=index.activeId;
+  const state=chatState(threadId);
   const model=useSyncExternalStore(subscribeChats,chatModel);
   const [draft,setDraft]=useState('');
+  const [ends,setEnds]=useState({top:true,bottom:true});
+  const [notice,setNotice]=useState('');
   const [picked,setPicked]=useState<ContextItem[]>([]);
   const [mention,setMention]=useState<{start:number;query:string;items:ContextItem[];active:number}|null>(null);
   const [box,setBox]=useState<{top:number;left:number;width:number;height:number}|null>(null);
@@ -64,8 +69,10 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
   const pinned=useRef(true);
   const input=useRef<HTMLTextAreaElement>(null);
   const wanted=dragWidth ?? width ?? DEFAULT_WIDTH;
+  const lastUsage=state.messages.at(-1)?.usage;
 
-  useEffect(()=>{void loadChat(chatId);setDraft('');setPicked([]);setMention(null);pinned.current=true;},[chatId]);
+  useEffect(()=>{void loadChat(chatId);},[chatId]);
+  useEffect(()=>{setDraft('');setPicked([]);setMention(null);setNotice('');pinned.current=true;},[threadId]);
   // The panel follows its window. A fixed position lets the document scroll behind without moving it.
   // The space is set as a style because React rewrites these elements' classes when the page changes.
   useEffect(()=>{
@@ -92,7 +99,33 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
     window.addEventListener('scroll',measure,true);
     return ()=>{observer.disconnect();window.removeEventListener('resize',measure);window.removeEventListener('scroll',measure,true);pane.style.removeProperty('padding-right');};
   },[wanted,host]);
-  useEffect(()=>{if(pinned.current && list.current)list.current.scrollTop=list.current.scrollHeight;},[state.messages,state.activity]);
+  const readEnds=()=>{
+    const el=list.current;
+    if(!el)return;
+    const top=el.scrollTop<8,bottom=el.scrollHeight-el.scrollTop-el.clientHeight<8;
+    setEnds(current=>current.top===top && current.bottom===bottom ? current : {top,bottom});
+  };
+  const goTo=(end:'top'|'bottom')=>{
+    const el=list.current;
+    if(!el)return;
+    pinned.current=end==='bottom';
+    el.scrollTop=end==='top' ? 0 : el.scrollHeight;
+    readEnds();
+  };
+  const removeThread=async()=>{
+    const title=index.threads.find(t=>t.id===threadId)?.title || 'this chat';
+    if(!window.confirm(`Delete “${title}”? Its whole history will be gone and can’t be restored. Edits it already made to your documents stay.`))return;
+    if(!await deleteThread(chatId,threadId))setNotice('Deleted here, but Claude Code’s own copy of this chat couldn’t be removed. Is the app’s server running?');
+  };
+  // Opens at the latest message, and stays there as an answer arrives unless you've scrolled up to read.
+  useLayoutEffect(()=>{if(pinned.current && list.current)list.current.scrollTop=list.current.scrollHeight;readEnds();},[state.messages,state.activity,threadId,box?.height]);
+  useEffect(()=>{
+    const element=list.current;
+    if(!element)return;
+    const observer=new ResizeObserver(()=>{if(pinned.current)element.scrollTop=element.scrollHeight;readEnds();});
+    observer.observe(element);
+    return ()=>observer.disconnect();
+  },[]);
 
   const send=(text=draft)=>{
     if(!text.trim() || state.running)return;
@@ -101,7 +134,7 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
     setPicked([]);
     setMention(null);
     pinned.current=true;
-    void sendChat(chatId,text.trim(),context);
+    void sendChat(chatId,threadId,text.trim(),context);
     input.current?.focus();
   };
   const readMention=(text:string,caret:number)=>{
@@ -150,19 +183,31 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
       onDoubleClick={()=>{setDragWidth(null);onWidth(null);}}/>
     <div className="doc-chat-head">
       <Sparkles size={15}/><div><strong>{label}</strong><small>{title}</small></div>
-      {state.messages.length>0 && <button className="icon-button" aria-label="Clear this chat" title="Clear this chat" onClick={()=>clearChat(chatId)}><Trash2 size={15}/></button>}
       <button className="icon-button" aria-label="Close chat" title="Close chat" onClick={onClose}><X size={16}/></button>
     </div>
-    <div ref={list} className="doc-chat-messages" onScroll={e=>{const el=e.currentTarget;pinned.current=el.scrollHeight-el.scrollTop-el.clientHeight<40;}}>
+    <div className="doc-chat-sessions">
+      <select aria-label="Choose a chat" value={threadId} onChange={e=>selectThread(chatId,e.target.value)}>{index.threads.map(thread=><option key={thread.id} value={thread.id}>{chatState(thread.id).running ? '● ' : ''}{thread.title || 'New chat'}{thread.updatedAt ? ` · ${new Date(thread.updatedAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}` : ''}</option>)}</select>
+      <button className="small-button" title="Start a new chat. It doesn’t resend this conversation, so it uses fewer tokens." disabled={!state.messages.length} onClick={()=>newThread(chatId)}><Plus size={13}/> New chat</button>
+      <button className="icon-button" aria-label="Delete this chat" title="Delete this chat" disabled={!state.messages.length} onClick={()=>void removeThread()}><Trash2 size={14}/></button>
+    </div>
+    {notice && <p className="chat-change-note is-warning doc-chat-notice"><TriangleAlert size={13}/>{notice}</p>}
+    <div className="doc-chat-scroll">
+    <div className="doc-chat-jump">
+      {!ends.top && <button aria-label="Go to the top" title="Go to the top (Home)" onClick={()=>goTo('top')}><ArrowUp size={14}/></button>}
+      {!ends.bottom && <button aria-label="Go to the bottom" title="Go to the bottom (End)" onClick={()=>goTo('bottom')}><ArrowDown size={14}/></button>}
+    </div>
+    <div ref={list} className="doc-chat-messages" tabIndex={0} aria-label="Messages" onKeyDown={e=>{if(e.key==='Home'){e.preventDefault();goTo('top');}else if(e.key==='End'){e.preventDefault();goTo('bottom');}}} onScroll={e=>{const el=e.currentTarget;pinned.current=el.scrollHeight-el.scrollTop-el.clientHeight<40;readEnds();}}>
       {!state.messages.length && <div className="doc-chat-empty"><p>{copy.intro}</p>{copy.suggestions.map(text=><button key={text} className="small-button" onClick={()=>send(text)}>{text}</button>)}</div>}
-      {state.messages.map(message=><Message key={message.id} noteId={chatId} message={message} onOpen={onOpenNote}/>)}
+      {state.messages.map(message=><Message key={message.id} chatId={chatId} noteId={threadId} message={message} onOpen={onOpenNote}/>)}
       {state.running && <div className="doc-chat-activity"><LoaderCircle size={13} className="spin"/>{state.activity || 'Writing…'}</div>}
+      {!state.running && lastUsage && tokenTotal(lastUsage)>LONG_CHAT_TOKENS && <div className="doc-chat-long"><span>This chat is getting long, so each message resends a lot.</span><button className="text-button" onClick={()=>newThread(chatId)}>Start a new chat</button></div>}
+    </div>
     </div>
     <div className="doc-chat-composer">
       {mention && <div className="chat-mentions" role="listbox" aria-label="Add to this message">{mention.items.map((item,i)=><button key={item.id} role="option" aria-selected={i===mention.active} className={i===mention.active ? 'is-active' : ''} onMouseDown={e=>{e.preventDefault();pick(item);}}><strong>{item.title}</strong><small>{item.detail}</small></button>)}</div>}
       {chosen.length>0 && <div className="chat-chosen" aria-label="Claude can only use these for this message"><small>Only:</small>{chosen.map(item=><span key={item.id}>{item.title}<button aria-label={`Remove ${item.title}`} onClick={()=>removePick(item)}><X size={11}/></button></span>)}</div>}
       <textarea ref={input} rows={2} aria-label="Message Claude" placeholder={copy.placeholder} value={draft} onChange={e=>{setDraft(e.target.value);readMention(e.target.value,e.target.selectionStart);}} onKeyDown={onKeyDown}/>
-      {state.running ? <button className="primary doc-chat-send" aria-label="Stop" title="Stop" onClick={()=>stopChat(chatId)}><Square size={13}/></button> : <button className="primary doc-chat-send" aria-label="Send" title="Send (Enter)" disabled={!draft.trim()} onClick={()=>send()}><ArrowUp size={15}/></button>}
+      {state.running ? <button className="primary doc-chat-send" aria-label="Stop" title="Stop" onClick={()=>stopChat(threadId)}><Square size={13}/></button> : <button className="primary doc-chat-send" aria-label="Send" title="Send (Enter)" disabled={!draft.trim()} onClick={()=>send()}><ArrowUp size={15}/></button>}
       <div className="doc-chat-model"><button className="icon-button chat-at" aria-label="Add a doc to this message" title="Limit this message to specific docs, to save tokens" onClick={startMention}><AtSign size={14}/></button><label>Model<select value={model} onChange={e=>setChatModel(e.target.value as ChatModel)}>{chatModels.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</select></label><small>Uses your Claude Code plan. What Claude reads is sent to Anthropic.</small></div>
     </div>
   </aside>;

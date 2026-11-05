@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { activeMention, applyChatChange, changeLines, chatWorkspace, contextItems, matchContext, messageContext, tokenTotal, diffCounts, diffHunks, lineDiff, modelName, undoChatChange } from '../src/doc-chat-model.ts';
+import { activeMention, threadTitle, applyChatChange, changeLines, chatWorkspace, contextItems, matchContext, messageContext, tokenTotal, diffCounts, diffHunks, lineDiff, modelName, undoChatChange } from '../src/doc-chat-model.ts';
 import { initialWorkspace, newNote } from '../src/model.ts';
 import { chatMiddleware, claudeArgs, claudeEnv, createDocChat } from '../server/doc-chat.mjs';
 import { isLocalRequest } from '../server/github-checkpoints.mjs';
@@ -266,4 +267,44 @@ test('with @mentions only those files exist, and hidden documents stay safe',asy
 test('token usage is reported',async()=>{
   const {done}=await ask("print({type:'result',is_error:false,result:'ok',usage:{input_tokens:5,cache_creation_input_tokens:7,cache_read_input_tokens:11,output_tokens:3}});",{noteId:'a',message:'x',workspace:workspace(note('a','A',''))});
   assert.deepEqual(done.usage,{input:5,cacheWrite:7,cacheRead:11,output:3});
+});
+
+test('separate sessions answer at once, while one session answers one message at a time',async()=>{
+  const fake=fakeClaude(`setTimeout(()=>{${ok}},300);`);
+  const directory=mkdtempSync(path.join(tmpdir(),'chat-data-'));
+  const chat=createDocChat({directory,uploadsDirectory:path.join(directory,'none'),command:fake.file,env:{HOME:process.env.HOME,PATH:process.env.PATH}});
+  const signal=new AbortController().signal;
+  const body=thread=>({noteId:'a',thread,message:'x',workspace:workspace(note('a','A','text'))});
+  const results={one:[],two:[],again:[]};
+  await Promise.all([chat.send(body('one'),e=>results.one.push(e),signal),chat.send(body('two'),e=>results.two.push(e),signal),chat.send(body('one'),e=>results.again.push(e),signal)]);
+  assert.equal(results.one.at(-1).type,'done');
+  assert.equal(results.two.at(-1).type,'done');
+  assert.match(results.again.at(-1).message,/still answering/);
+  const odd=[];
+  await chat.send({...body('../../evil'),noteId:'a'},e=>odd.push(e),signal);
+  assert.equal(odd.at(-1).type,'done','an unusable session id falls back to the chat');
+});
+test('a chat is titled from its first message',()=>{
+  assert.equal(threadTitle('  Summarize\n this   doc '),'Summarize this doc');
+  const long=threadTitle('x'.repeat(100));
+  assert.equal(long.length,48);
+  assert.ok(long.endsWith('…'));
+});
+
+test('deleting a chat removes only that session\'s transcript',async()=>{
+  const home=mkdtempSync(path.join(tmpdir(),'chat-home-'));
+  const directory=realpathSync(mkdtempSync(path.join(tmpdir(),'chat-data-')));
+  const chat=createDocChat({directory,uploadsDirectory:'/none',command:'/none',env:{HOME:home}});
+  const projects=path.join(home,'.claude','projects');
+  const folder=thread=>path.join(projects,path.join(directory,createHash('sha256').update(thread).digest('hex').slice(0,16)).replace(/[^a-zA-Z0-9]/g,'-'));
+  mkdirSync(folder('one'),{recursive:true});writeFileSync(path.join(folder('one'),'s.jsonl'),'history');
+  mkdirSync(folder('two'),{recursive:true});writeFileSync(path.join(folder('two'),'s.jsonl'),'history');
+  const unrelated=path.join(projects,'-Users-me-other-project');
+  mkdirSync(unrelated,{recursive:true});
+  assert.deepEqual(await chat.forget({thread:'one'}),{removed:true});
+  assert.equal(existsSync(folder('one')),false);
+  assert.equal(existsSync(folder('two')),true);
+  assert.equal(existsSync(unrelated),true);
+  for(const thread of ['../..','','a/b',undefined]) assert.deepEqual(await chat.forget({thread}),{removed:false});
+  assert.equal(existsSync(projects),true,'an odd id deletes nothing');
 });

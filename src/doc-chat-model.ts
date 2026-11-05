@@ -12,6 +12,11 @@ export function modelName(id: string) {
   const match=id.match(/^claude-([a-z]+)-(\d+)(?:-(\d+))?/);
   return match ? `${match[1][0].toUpperCase()}${match[1].slice(1)} ${match[2]}${match[3] ? `.${match[3]}` : ''}` : id;
 }
+/** One conversation. A chat can hold several, and a new one starts without the old one's history. */
+export type ChatThread = {id:string; title:string; updatedAt:string};
+export const threadTitle=(text:string)=>{const line=text.replace(/\s+/g,' ').trim();return line.length>48 ? `${line.slice(0,47)}…` : line;};
+/** Past this, each message resends enough history that a new chat is worth suggesting. */
+export const LONG_CHAT_TOKENS=40000;
 export type ChatUsage = {input:number; cacheWrite:number; cacheRead:number; output:number};
 export type ChatMessage = {usage?:ChatUsage; model?:string; id:string; role:'user'|'assistant'; text:string; tools?:string[]; changes?:ChatChange[]; notes?:string[]; error?:boolean; stopped?:boolean};
 export type DiffLine = {type:'same'|'add'|'remove'; text:string};

@@ -220,14 +220,30 @@ export function createDocChat({ directory, uploadsDirectory, command = 'claude',
     };
 
     return {
+        /** Claude Code keeps its own transcript of each session, so deleting a chat removes that too. */
+        async forget(body) {
+            const thread = typeof body.thread === 'string' && /^[\w-]+$/.test(body.thread) ? body.thread : '';
+            if (!thread) return { removed: false };
+            // A chat that was just stopped could otherwise still be writing.
+            for (let waited = 0; running.has(thread) && waited < 5000; waited += 100) await new Promise(done => setTimeout(done, 100));
+            await mkdir(directory, { recursive: true });
+            const sandbox = path.join(await realpath(directory), createHash('sha256').update(thread).digest('hex').slice(0, 16));
+            await rm(sandbox, { recursive: true, force: true });
+            const projects = path.join(env.CLAUDE_CONFIG_DIR || path.join(env.HOME || homedir(), '.claude'), 'projects');
+            // This folder belongs to this session alone: its name is the session's own working directory.
+            await rm(path.join(projects, sandbox.replace(/[^a-zA-Z0-9]/g, '-')), { recursive: true, force: true });
+            return { removed: true };
+        },
         async send(body, emit, signal) {
             const everything = body.scope === WORKSPACE_CHAT;
             const noteId = String(body.noteId || '');
             const chatId = everything ? WORKSPACE_CHAT : noteId;
             if (!chatId || typeof body.message !== 'string' || !body.message.trim()) return emit({ type: 'error', message: 'Write a message first.' });
-            if (running.has(chatId)) return emit({ type: 'error', message: 'Claude is still answering in this chat.' });
-            running.add(chatId);
-            const sandbox = path.join(directory, createHash('sha256').update(chatId).digest('hex').slice(0, 16));
+            // Each session has its own copy, so several can answer at once, and resuming one finds it where it was.
+            const thread = typeof body.thread === 'string' && /^[\w-]+$/.test(body.thread) ? body.thread : chatId;
+            if (running.has(thread)) return emit({ type: 'error', message: 'Claude is still answering in this chat.' });
+            running.add(thread);
+            const sandbox = path.join(directory, createHash('sha256').update(thread).digest('hex').slice(0, 16));
             try {
                 const workspace = validateWorkspace(body.workspace);
                 const focus = everything ? undefined : workspace.notes.find(n => n.id === noteId);
@@ -260,7 +276,7 @@ export function createDocChat({ directory, uploadsDirectory, command = 'claude',
                 emit({ type: 'error', message: error instanceof Error ? error.message : 'The chat failed.' });
             }
             finally {
-                running.delete(chatId);
+                running.delete(thread);
                 // The sandbox is a full copy of the notes, so it doesn't stay after the answer.
                 await rm(sandbox, { recursive: true, force: true }).catch(() => { });
             }
@@ -270,7 +286,8 @@ export function createDocChat({ directory, uploadsDirectory, command = 'claude',
 
 export function chatMiddleware(chat, isLocalRequest, maxBytes = 64 * 1024 * 1024) {
     return async (req, res, next) => {
-        if (req.url?.split('?')[0] !== '/api/chat/message') return next();
+        const endpoint = req.url?.split('?')[0];
+        if (endpoint !== '/api/chat/message' && endpoint !== '/api/chat/forget') return next();
         res.setHeader('Cache-Control', 'no-store');
         if (req.method !== 'POST' || !isLocalRequest(req)) {
             res.statusCode = 403;
@@ -286,6 +303,12 @@ export function chatMiddleware(chat, isLocalRequest, maxBytes = 64 * 1024 * 1024
         let body;
         try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
         catch { res.statusCode = 400; return res.end(JSON.stringify({ error: 'Invalid chat request.' })); }
+        if (endpoint === '/api/chat/forget') {
+            res.setHeader('Content-Type', 'application/json');
+            const result = await chat.forget(body).catch(() => null);
+            if (!result) res.statusCode = 500;
+            return res.end(JSON.stringify(result || { error: 'Claude Code’s copy of this chat could not be removed.' }));
+        }
         res.setHeader('Content-Type', 'application/x-ndjson');
         const controller = new AbortController();
         res.on('close', () => { if (!res.writableFinished) controller.abort(); });
