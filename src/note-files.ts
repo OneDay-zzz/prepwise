@@ -9,6 +9,12 @@ export function noteToMarkdown(note: Note): string {
   if(note.experience) fields.experience=note.experience;
   return '---\nprepwise: 1\n' + Object.entries(fields).map(([key,value])=>`${key}: ${JSON.stringify(value)}`).join('\n') + '\n---\n' + note.body;
 }
+/** The note's text without its metadata block, or null when that block is broken. */
+export function markdownBody(text: string): string|null {
+  if(!text.startsWith('---\nprepwise: 1\n') && !text.startsWith('---\r\nprepwise: 1\r\n')) return text;
+  const match=text.match(/^---\r?\nprepwise: 1\r?\n[\s\S]*?\r?\n---\r?\n/);
+  return match ? text.slice(match[0].length) : null;
+}
 export function readNoteMarkdown(text: string, base: Note, sections: SectionConfig[] = defaultSections): Note {
   if(!text.startsWith('---\nprepwise: 1\n') && !text.startsWith('---\r\nprepwise: 1\r\n')) return {...base,body:text};
   const match=text.match(/^---\r?\nprepwise: 1\r?\n([\s\S]*?)\r?\n---\r?\n/);

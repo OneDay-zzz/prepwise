@@ -186,7 +186,7 @@ test('layout settings fall back safely and keep the windows in range', async () 
   assert.deepEqual(normalizeLayout(null), defaultLayout);
   assert.deepEqual(normalizeLayout({docs:'grid',ratio:'wide',second:{id:7,mode:'zoom'}}), defaultLayout);
   const saved = normalizeLayout({sidebarCollapsed:true,listCollapsed:true,docs:'rows',ratio:.9,second:{id:'n1',mode:'board'}});
-  assert.deepEqual(saved, {sidebarCollapsed:true,listCollapsed:true,detailsOpen:false,outlineOpen:true,outlineWidth:null,docs:'rows',ratio:.75,sidebarWidth:null,listWidth:null,second:{id:'n1',mode:'board'},noteSort:defaultLayout.noteSort,noteViews:{},lastView:'preview'});
+  assert.deepEqual(saved, {sidebarCollapsed:true,listCollapsed:true,detailsOpen:false,outlineOpen:true,outlineWidth:null,chatOpen:{first:false,second:false,workspace:false},chatWidth:null,docs:'rows',ratio:.75,sidebarWidth:null,listWidth:null,second:{id:'n1',mode:'board'},noteSort:defaultLayout.noteSort,noteViews:{},lastView:'preview'});
   assert.deepEqual(normalizeLayout({noteSort:{key:'colour',direction:'asc'}}).noteSort,defaultLayout.noteSort);
   assert.deepEqual(normalizeLayout({noteSort:{key:'title',direction:'asc'}}).noteSort,{key:'title',direction:'asc'});
   assert.equal(clampRatio(.1), .25);
@@ -326,4 +326,47 @@ test('gallery PDFs are recognized by type, or by name when the type is unknown',
   assert.ok(!isPdfFile({name:'photo.png',type:'image/png'}));
   assert.equal(formatFileSize(2048),'2 KB');
   assert.equal(formatFileSize(3*1024*1024),'3.0 MB');
+});
+
+test('reordering notes keeps others in place, leaves updatedAt alone, and survives validation',async()=>{
+  const {reorderNotes}=await import('../src/model.ts');
+  const make=(id,extra={})=>({...newNote('leetcode',false),id,title:id,updatedAt:`2026-01-0${id.charCodeAt(0)-96}T00:00:00.000Z`,...extra});
+  const w={...initialWorkspace(),notes:[make('a'),make('b'),make('c',{folderId:undefined}),make('d'),{...newNote('resume',false),id:'other'}]};
+  const updated={key:'updated',direction:'desc'},manual={key:'manual',direction:'asc'};
+  const shown=x=>sortNotes(x.notes.filter(n=>n.section==='leetcode'),manual).map(n=>n.id).join('');
+  // On screen by last updated: d c b a. Seeds My order from what the user sees.
+  const moved=reorderNotes(w,['a'],'d',false,updated);
+  assert.equal(shown(moved),'adcb');
+  assert.equal(moved.notes.find(n=>n.id==='a').updatedAt,w.notes.find(n=>n.id==='a').updatedAt);
+  assert.equal(moved.notes.find(n=>n.id==='other').order,undefined,'other sections are not numbered');
+  assert.doesNotThrow(()=>validateWorkspace(moved));
+  assert.equal(shown(reorderNotes(moved,['d','b'],'a',false,manual)),'dbac','several notes move together, in display order');
+  assert.equal(shown(reorderNotes(moved,['b'],'c',true,manual)),'adcb','no-op');
+  assert.equal(reorderNotes(moved,['b'],'c',true,manual),moved,'a drop that changes nothing returns the same workspace');
+  assert.equal(reorderNotes(moved,['a'],'a',false,manual),moved,'dropping on itself changes nothing');
+  // A new note has no order, so it is on top. Pins still come first.
+  const withNew={...moved,notes:[...moved.notes,make('e')]};
+  assert.equal(shown(withNew),'eadcb');
+  const pinned={...moved,notes:moved.notes.map(n=>n.id==='c'?{...n,pinned:true}:n)};
+  assert.equal(shown(pinned),'cadb');
+  assert.throws(()=>validateWorkspace({...moved,notes:moved.notes.map(n=>n.id==='a'?{...n,order:'x'}:n)}),/invalid note/);
+});
+test('folders stay alphabetical until reordered, and new ones go last',async()=>{
+  const {foldersIn,reorderFolders,moveNoteToSection:move}=await import('../src/model.ts');
+  const folders=[{id:'z',section:'leetcode',name:'Zebra'},{id:'a',section:'leetcode',name:'Apple'},{id:'m',section:'leetcode',name:'Mango'},{id:'x',section:'resume',name:'Other'}];
+  const w={...initialWorkspace(),folders};
+  const names=x=>foldersIn(x.folders,'leetcode').map(f=>f.id).join('');
+  assert.equal(names(w),'amz');
+  const moved=reorderFolders(w,'z','a',false);
+  assert.equal(names(moved),'zam');
+  assert.deepEqual(moved.folders.map(f=>f.id),['z','a','m','x'],'stored order is untouched, so generated file paths stay stable');
+  assert.equal(moved.folders.find(f=>f.id==='x').order,undefined);
+  assert.equal(names(reorderFolders(moved,'z','m',true)),'amz');
+  assert.equal(reorderFolders(moved,'z','x',false),moved,'folders cannot cross sections');
+  const added={...moved,folders:[...moved.folders,{id:'b',section:'leetcode',name:'Banana'}]};
+  assert.equal(names(added),'zamb');
+  assert.doesNotThrow(()=>validateWorkspace(added));
+  assert.throws(()=>validateWorkspace({...w,folders:[{...folders[0],order:'1'}]}),/invalid folders/);
+  const note={...newNote('leetcode',false),id:'n',order:3};
+  assert.equal(move({...w,notes:[note]},'n','resume').notes[0].order,undefined,'a note starts fresh in a new section');
 });

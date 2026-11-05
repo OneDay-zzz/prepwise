@@ -2,14 +2,14 @@ import { useMemo, useState } from 'react';
 import { ArrowUpRight, Bookmark, Building2, ChevronDown, ChevronRight, Copy, FileInput, Flag, FolderInput, Pin, Scissors, Tag, X } from 'lucide-react';
 import { splitLevels, type NotePart } from './note-outline';
 import SplitNoteDialog from './SplitNoteDialog';
-import { addTag, companyGroups, emptyExperience, type DocumentFolder, type Experience, type Note, type SectionConfig } from './model';
+import { addTag, companyGroups, emptyExperience, foldersIn, type DocumentFolder, type Experience, type Note, type SectionConfig } from './model';
 
 export type NoteTransfer = (kind:'move'|'copy',section:string,folderId?:string)=>void;
 
 function TransferPanel({note,sections,folders,onTransfer,onClose}: {note:Note;sections:SectionConfig[];folders:DocumentFolder[];onTransfer:NoteTransfer;onClose:()=>void}) {
   const [section,setSection]=useState(()=>sections.find(s=>s.id!==note.section)?.id || note.section);
   const [folderId,setFolderId]=useState('');
-  const available=folders.filter(f=>f.section===section);
+  const available=foldersIn(folders,section);
   const send=(kind:'move'|'copy')=>{onTransfer(kind,section,folderId || undefined);onClose();};
   return <div className="note-transfer" role="group" aria-label="Move or copy this document">
     <label>To section<select value={section} onChange={e=>{setSection(e.target.value);setFolderId('');}}>{sections.map(s=><option key={s.id} value={s.id}>{s.name}{s.id===note.section ? ' (current)' : s.hidden ? ' (hidden)' : ''}</option>)}</select></label>
@@ -23,7 +23,7 @@ export function DocumentDetails({note,onChange,allTags,folders,sections,notes,on
   const [transferring,setTransferring]=useState(false);
   const [splitting,setSplitting]=useState(false);
   const canSplit=useMemo(()=>open && splitLevels(note.body).length>0,[open,note.body]);
-  const sectionFolders=folders.filter(f=>f.section===note.section);
+  const sectionFolders=foldersIn(folders,note.section);
   const submit=()=>{if(!draft.trim())return;const tags=addTag(note.tags || [],draft);if(tags!==note.tags)onChange({tags});setDraft('');};
   return <div className="document-details">
     <div className="document-flags"><button className={`small-button ${note.pinned?'flag-active':''}`} aria-pressed={!!note.pinned} onClick={()=>onChange({pinned:!note.pinned})}><Pin size={14}/>{note.pinned?'Pinned':'Pin'}</button><button className={`small-button ${note.marked?'flag-active':''}`} aria-pressed={!!note.marked} onClick={()=>onChange({marked:!note.marked})}><Bookmark size={14}/>{note.marked?'Bookmarked':'Bookmark'}</button><button className="small-button" aria-expanded={open} onClick={onToggle}>{open ? <ChevronDown size={14}/> : <ChevronRight size={14}/>} Details</button>{!open && <button className="details-summary" aria-label="Show document details" onClick={onToggle}><span><FolderInput size={12}/>{sectionFolders.find(f=>f.id===note.folderId)?.name || 'Unfiled'}</span>{note.importance && <span><Flag size={12}/>{note.importance}</span>}{note.tags?.slice(0,3).map(tag=><span key={tag}>#{tag}</span>)}{(note.tags?.length || 0)>3 && <span>+{note.tags!.length-3}</span>}</button>}{open && <><button className="small-button" aria-expanded={transferring} onClick={()=>setTransferring(!transferring)}><FileInput size={14}/> Move or copy</button>{canSplit && <button className="small-button" onClick={()=>setSplitting(true)}><Scissors size={14}/> Split into documents</button>}<label className="move-document-label"><FolderInput size={14}/> Folder<select className="move-document" aria-label="Move document to folder" value={note.folderId || ''} onChange={e=>onChange({folderId:e.target.value || undefined})}><option value="">Unfiled</option>{sectionFolders.map(folder=><option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label></>}</div>

@@ -8,6 +8,9 @@ export type LayoutSettings = {
   detailsOpen: boolean;
   outlineOpen: boolean;
   outlineWidth: number | null;
+  /** Whether each window has its chat open, and the chat for the whole workspace. */
+  chatOpen: {first: boolean; second: boolean; workspace: boolean};
+  chatWidth: number | null;
   docs: DocLayout;
   /** The first window's share of the space, from 0.25 to 0.75. */
   ratio: number;
@@ -20,11 +23,11 @@ export type LayoutSettings = {
   noteViews: Record<string, NoteMode>;
   lastView: NoteMode;
 };
-export const defaultLayout: LayoutSettings = {sidebarCollapsed:false,listCollapsed:false,detailsOpen:false,outlineOpen:true,outlineWidth:null,docs:'one',ratio:.5,sidebarWidth:null,listWidth:null,second:{id:'',mode:'preview'},noteSort:defaultNoteSort,noteViews:{},lastView:'preview'};
+export const defaultLayout: LayoutSettings = {sidebarCollapsed:false,listCollapsed:false,detailsOpen:false,outlineOpen:true,outlineWidth:null,chatOpen:{first:false,second:false,workspace:false},chatWidth:null,docs:'one',ratio:.5,sidebarWidth:null,listWidth:null,second:{id:'',mode:'preview'},noteSort:defaultNoteSort,noteViews:{},lastView:'preview'};
 
 export function clampRatio(value: number) {return Math.min(.75,Math.max(.25,value));}
 
-export const columnLimits = {sidebar:{min:180,max:420},list:{min:180,max:560},outline:{min:120,max:480}} as const;
+export const columnLimits = {sidebar:{min:180,max:420},list:{min:180,max:560},outline:{min:120,max:480},chat:{min:280,max:640}} as const;
 export function clampColumn(value: number, {min,max}: {min:number;max:number}) {return Math.round(Math.min(max,Math.max(min,value)));}
 const savedColumn=(value: unknown, limits: {min:number;max:number})=>typeof value==='number' && Number.isFinite(value) ? clampColumn(value,limits) : null;
 
@@ -39,12 +42,15 @@ export function normalizeLayout(value: unknown): LayoutSettings {
   const v=(value && typeof value==='object' ? value : {}) as Record<string,unknown>;
   const sort=(v.noteSort && typeof v.noteSort==='object' ? v.noteSort : {}) as Record<string,unknown>;
   const second=(v.second && typeof v.second==='object' ? v.second : {}) as Record<string,unknown>;
+  const chat=(v.chatOpen && typeof v.chatOpen==='object' ? v.chatOpen : {}) as Record<string,unknown>;
   return {
     sidebarCollapsed:v.sidebarCollapsed===true,
     listCollapsed:v.listCollapsed===true,
     detailsOpen:v.detailsOpen===true,
     outlineOpen:v.outlineOpen!==false,
     outlineWidth:savedColumn(v.outlineWidth,columnLimits.outline),
+    chatOpen:{first:chat.first===true,second:chat.second===true,workspace:chat.workspace===true},
+    chatWidth:savedColumn(v.chatWidth,columnLimits.chat),
     docs:v.docs==='columns' || v.docs==='rows' ? v.docs : 'one',
     ratio:typeof v.ratio==='number' && Number.isFinite(v.ratio) ? clampRatio(v.ratio) : .5,
     sidebarWidth:savedColumn(v.sidebarWidth,columnLimits.sidebar),

@@ -1,7 +1,7 @@
 export type Section = string;
 export type Experience = { company: string; role: string; round: string; date: string; sourceUrl: string };
-export type DocumentFolder = {id:string; section:Section; name:string};
-export type Note = { folderId?: string; pinned?: boolean; marked?: boolean; tags?: string[]; importance?: number; experience?: Experience; id: string; section: Section; title: string; body: string; updatedAt: string; ready: boolean; scene?: { elements: readonly any[]; appState: Record<string, any>; files: Record<string, any> } };
+export type DocumentFolder = {id:string; section:Section; name:string; order?:number};
+export type Note = { order?: number; folderId?: string; pinned?: boolean; marked?: boolean; tags?: string[]; importance?: number; experience?: Experience; id: string; section: Section; title: string; body: string; updatedAt: string; ready: boolean; scene?: { elements: readonly any[]; appState: Record<string, any>; files: Record<string, any> } };
 export type Resume = { name: string; data: string; type: string; size: number };
 export type Plan = { id: string; kind: 'task' | 'interview' | 'milestone'; title: string; date: string; time: string; duration: number; company: string; round: string; notes: string; noteId: string; done: boolean };
 export type UploadedFile = { id: string; section: Section; name: string; type: string; size: number; addedAt: string };
@@ -33,7 +33,7 @@ function sectionTemplate(section: Section, config?: SectionConfig) {
 const targetFolder=(workspace:Workspace,section:Section,folderId?:string)=>workspace.folders?.some(f=>f.id===folderId && f.section===section) ? folderId : undefined;
 /** Moves a note to a section. Folders belong to one section, so it only keeps a folder chosen in the new one. */
 export function moveNoteToSection(workspace:Workspace,id:string,section:Section,folderId?:string): Workspace {
-  return {...workspace,notes:workspace.notes.map(n=>n.id===id ? {...n,section,folderId:targetFolder(workspace,section,folderId)} : n)};
+  return {...workspace,notes:workspace.notes.map(n=>n.id===id ? {...n,section,order:undefined,folderId:targetFolder(workspace,section,folderId)} : n)};
 }
 type NotePartInput={title:string;body:string;group?:string};
 export type NotePartPlan={kind:'new'|'fill'|'same'|'another';existing?:Note};
@@ -80,7 +80,7 @@ export function addNoteParts(workspace:Workspace,id:string,parts:NotePartInput[]
 export function copyNoteToSection(workspace:Workspace,id:string,section:Section,folderId?:string): Workspace {
   const note=workspace.notes.find(n=>n.id===id);
   if(!note) return workspace;
-  const copy:Note={...structuredClone(note),id:crypto.randomUUID(),section,folderId:targetFolder(workspace,section,folderId),title:note.section===section ? `${note.title || 'Untitled note'} (copy)` : note.title,updatedAt:new Date().toISOString()};
+  const copy:Note={...structuredClone(note),order:undefined,id:crypto.randomUUID(),section,folderId:targetFolder(workspace,section,folderId),title:note.section===section ? `${note.title || 'Untitled note'} (copy)` : note.title,updatedAt:new Date().toISOString()};
   return {...workspace,notes:[copy,...workspace.notes]};
 }
 export const isPdfFile = (file: Pick<UploadedFile,'name'|'type'>) => file.type==='application/pdf' || ((!file.type || file.type==='application/octet-stream') && /\.pdf$/i.test(file.name));
@@ -121,7 +121,7 @@ export function validateWorkspace(value: unknown): Workspace {
   if(w.folders !== undefined && !Array.isArray(w.folders)) throw new Error('The backup contains invalid folders.');
   const folderIds=new Set<string>();
   for(const folder of w.folders || []) {
-    if(!folder || typeof folder.id!=='string' || !folder.id || folderIds.has(folder.id) || !knownSections.has(folder.section) || typeof folder.name!=='string' || !folder.name.trim()) throw new Error('The backup contains invalid folders.');
+    if(!folder || typeof folder.id!=='string' || !folder.id || folderIds.has(folder.id) || !knownSections.has(folder.section) || typeof folder.name!=='string' || !folder.name.trim() || (folder.order!==undefined && !Number.isFinite(folder.order))) throw new Error('The backup contains invalid folders.');
     folderIds.add(folder.id);
   }
   const ids = new Set<string>();
@@ -131,6 +131,7 @@ export function validateWorkspace(value: unknown): Workspace {
     if (n.pinned !== undefined && typeof n.pinned !== 'boolean' || n.marked !== undefined && typeof n.marked !== 'boolean' || n.tags !== undefined && (!Array.isArray(n.tags) || n.tags.some(t => typeof t !== 'string'))) throw new Error('The backup contains invalid document labels.');
     if (n.importance !== undefined && (!Number.isInteger(n.importance) || (n.importance as number) < 1 || (n.importance as number) > 5)) throw new Error('The backup contains an invalid importance level.');
     if (n.experience !== undefined && (!n.experience || typeof n.experience !== 'object' || !['company','role','round','date','sourceUrl'].every(key => typeof n.experience![key as keyof Experience] === 'string'))) throw new Error('The backup contains invalid company details.');
+    if(n.order !== undefined && !Number.isFinite(n.order)) throw new Error('The backup contains an invalid note.');
     if(n.folderId !== undefined && (typeof n.folderId!=='string' || !(w.folders || []).some(f=>f.id===n.folderId && f.section===n.section))) throw new Error('A note points to an invalid folder.');
     ids.add(n.id);
   }
@@ -161,7 +162,7 @@ export function companyGroups(notes: Note[]) {
   }
   return [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name));
 }
-export const noteSortKeys = ['updated','importance','title','length','ready','interview'] as const;
+export const noteSortKeys = ['manual','updated','importance','title','length','ready','interview'] as const;
 export type NoteSortKey = typeof noteSortKeys[number];
 export type NoteSortDirection = 'asc' | 'desc';
 export type NoteSort = {key: NoteSortKey; direction: NoteSortDirection};
@@ -170,6 +171,7 @@ export function noteWordCount(note: Note) { return note.body.trim() ? note.body.
 /** Each criterion's value, or undefined for a note without one. Those notes stay last in either direction. */
 function compareBy(key: NoteSortKey, a: Note, b: Note): number | undefined {
   switch(key) {
+    case 'manual': return (a.order ?? -1)-(b.order ?? -1);
     case 'updated': return a.updatedAt.localeCompare(b.updatedAt);
     case 'length': return noteWordCount(a)-noteWordCount(b);
     case 'ready': return Number(a.ready)-Number(b.ready);
@@ -192,8 +194,37 @@ export function sortNotes(notes: Note[], sort: NoteSort = defaultNoteSort) {
     const missing=Number(hasValue(sort.key,b))-Number(hasValue(sort.key,a));
     if(missing) return missing;
     const order=compareBy(sort.key,a,b) || 0;
-    return (sort.direction==='asc' ? order : -order) || b.updatedAt.localeCompare(a.updatedAt);
+    return (sort.direction==='asc' || sort.key==='manual' ? order : -order) || b.updatedAt.localeCompare(a.updatedAt);
   });
+}
+/**
+ * Puts notes next to a target, numbering the whole section from the order on screen so
+ * filtered-out notes keep their places. Notes not yet placed sort first, so a new one is on top.
+ * Returns the same workspace when nothing would change. Doesn't count as an edit, so updatedAt stays.
+ */
+export function reorderNotes(workspace:Workspace,ids:string[],targetId:string,after:boolean,sort:NoteSort): Workspace {
+  const target=workspace.notes.find(n=>n.id===targetId);
+  if(!target || ids.includes(targetId)) return workspace;
+  const list=sortNotes(workspace.notes.filter(n=>n.section===target.section),sort);
+  const rest=list.filter(n=>!ids.includes(n.id));
+  const at=rest.indexOf(target)+(after ? 1 : 0);
+  const next=[...rest.slice(0,at),...list.filter(n=>ids.includes(n.id)),...rest.slice(at)];
+  if(next.every((n,i)=>n===list[i])) return workspace;
+  const order=new Map(next.map((n,i)=>[n.id,i]));
+  return {...workspace,notes:workspace.notes.map(n=>order.has(n.id) ? {...n,order:order.get(n.id)} : n)};
+}
+/** A section's folders in display order: placed ones first, then the rest alphabetically. */
+export function foldersIn(folders:DocumentFolder[],section:Section) {
+  return folders.filter(f=>f.section===section).sort((a,b)=>a.order!==undefined && b.order!==undefined ? a.order-b.order : a.order!==undefined ? -1 : b.order!==undefined ? 1 : a.name.localeCompare(b.name));
+}
+export function reorderFolders(workspace:Workspace,id:string,targetId:string,after:boolean): Workspace {
+  const folders=workspace.folders || [];
+  const moving=folders.find(f=>f.id===id),target=folders.find(f=>f.id===targetId);
+  if(!moving || !target || id===targetId || moving.section!==target.section) return workspace;
+  const rest=foldersIn(folders,target.section).filter(f=>f.id!==id);
+  const at=rest.indexOf(target)+(after ? 1 : 0);
+  const order=new Map([...rest.slice(0,at),moving,...rest.slice(at)].map((f,i)=>[f.id,i]));
+  return {...workspace,folders:folders.map(f=>order.has(f.id) ? {...f,order:order.get(f.id)} : f)};
 }
 /** Title matches come first, then matches anywhere in the document. Without a query, the most recent. */
 export function searchNotes(notes: Note[], query: string) {

@@ -36,9 +36,23 @@ export function uploadPaths(workspace) {
     }
     return paths;
 }
+/** Where each section and folder lives under documents/, so a file added there can find its place. */
+export function documentFolders(workspace) {
+    const places = new Map();
+    const sections = workspaceSections(workspace);
+    const sectionDirs = uniqueNames(sections, directoryName);
+    for (const section of sections) {
+        places.set(sectionDirs.get(section.id), { section: section.id });
+        const folders = (workspace.folders || []).filter(f => f.section === section.id);
+        const folderDirs = uniqueNames(folders, directoryName);
+        for (const folder of folders)
+            places.set(`${sectionDirs.get(section.id)}/${folderDirs.get(folder.id)}`, { section: section.id, folderId: folder.id });
+    }
+    return places;
+}
 export function workspaceFiles(workspace, uploads = new Map()) {
     const files = [];
-    const add = (path, bytes) => files.push({ path: `${DOCUMENTS_DIR}/${path}`, bytes });
+    const add = (path, bytes, noteId) => files.push({ path: `${DOCUMENTS_DIR}/${path}`, bytes, ...(noteId ? { noteId } : {}) });
     const sections = workspaceSections(workspace);
     const sectionDirs = uniqueNames(sections, directoryName);
     for (const section of sections) {
@@ -55,7 +69,7 @@ export function workspaceFiles(workspace, uploads = new Map()) {
                 const stem = `${dir}/${stems.get(note.id)}`;
                 const hasDrawing = !!note.scene?.elements?.length;
                 const markdown = noteToMarkdown(note);
-                if (markdown || !hasDrawing) add(`${stem}.md`, Buffer.from(markdown));
+                if (markdown || !hasDrawing) add(`${stem}.md`, Buffer.from(markdown), note.id);
                 if (hasDrawing) add(`${stem}.excalidraw`, Buffer.from(drawingText(note)));
             }
         }
