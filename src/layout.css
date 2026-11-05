@@ -456,3 +456,9 @@ kbd{font:inherit;font-size:calc(11px*var(--font-scale));padding:1px 5px;border:1
 .doc-chat-notice{margin:8px 12px 0}
 :root[data-theme=dark] .doc-chat-jump button{background:#2a2b36;border-color:#3d3e4c;color:#cdbcf8}
 :root[data-theme=dark] .doc-chat-jump button:hover{background:#39304f}
+
+/* Chat text is always selectable, with the matching cursor */
+.chat-message,.chat-message *{user-select:text;-webkit-user-select:text}
+.chat-message{cursor:text}
+.chat-message :is(button,summary,a){cursor:pointer}
+.chat-message .chat-model{cursor:default}

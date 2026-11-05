@@ -67,6 +67,7 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
   const panel=useRef<HTMLElement>(null);
   const list=useRef<HTMLDivElement>(null);
   const pinned=useRef(true);
+  const selecting=useRef(false);
   const input=useRef<HTMLTextAreaElement>(null);
   const wanted=dragWidth ?? width ?? DEFAULT_WIDTH;
   const lastUsage=state.messages.at(-1)?.usage;
@@ -111,6 +112,18 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
     pinned.current=end==='bottom';
     el.scrollTop=end==='top' ? 0 : el.scrollHeight;
     readEnds();
+  };
+  // Text mustn't move under the mouse while it's being selected, and a finished selection stays in view.
+  const startSelecting=()=>{
+    selecting.current=true;
+    pinned.current=false;
+    const stop=()=>{
+      window.removeEventListener('mouseup',stop);
+      selecting.current=false;
+      const el=list.current;
+      if(el && !window.getSelection()?.toString())pinned.current=el.scrollHeight-el.scrollTop-el.clientHeight<40;
+    };
+    window.addEventListener('mouseup',stop);
   };
   const removeThread=async()=>{
     const title=index.threads.find(t=>t.id===threadId)?.title || 'this chat';
@@ -196,7 +209,7 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
       {!ends.top && <button aria-label="Go to the top" title="Go to the top (Home)" onClick={()=>goTo('top')}><ArrowUp size={14}/></button>}
       {!ends.bottom && <button aria-label="Go to the bottom" title="Go to the bottom (End)" onClick={()=>goTo('bottom')}><ArrowDown size={14}/></button>}
     </div>
-    <div ref={list} className="doc-chat-messages" tabIndex={0} aria-label="Messages" onKeyDown={e=>{if(e.key==='Home'){e.preventDefault();goTo('top');}else if(e.key==='End'){e.preventDefault();goTo('bottom');}}} onScroll={e=>{const el=e.currentTarget;pinned.current=el.scrollHeight-el.scrollTop-el.clientHeight<40;readEnds();}}>
+    <div ref={list} className="doc-chat-messages" tabIndex={0} aria-label="Messages" onKeyDown={e=>{if(e.key==='Home'){e.preventDefault();goTo('top');}else if(e.key==='End'){e.preventDefault();goTo('bottom');}}} onMouseDown={startSelecting} onScroll={e=>{const el=e.currentTarget;if(!selecting.current)pinned.current=el.scrollHeight-el.scrollTop-el.clientHeight<40;readEnds();}}>
       {!state.messages.length && <div className="doc-chat-empty"><p>{copy.intro}</p>{copy.suggestions.map(text=><button key={text} className="small-button" onClick={()=>send(text)}>{text}</button>)}</div>}
       {state.messages.map(message=><Message key={message.id} chatId={chatId} noteId={threadId} message={message} onOpen={onOpenNote}/>)}
       {state.running && <div className="doc-chat-activity"><LoaderCircle size={13} className="spin"/>{state.activity || 'Writing…'}</div>}

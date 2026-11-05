@@ -68,6 +68,15 @@ export default function App() {
   const [firstView, setFirstView] = useState<{id:string;mode:NoteMode}>({id:'',mode:'preview'});
   const [selection, setSelection] = useState<string[]>([]);
   const selectionAnchor = useRef('');
+  // A column drag turns off text selection across the app. If it's interrupted, such as when the
+  // window loses focus or the edge being dragged goes away, nothing else would turn it back on.
+  useEffect(()=>{
+    const finish=()=>{const shell=document.querySelector<HTMLElement>('.app-shell');if(shell)delete shell.dataset.resizing;};
+    window.addEventListener('pointerup',finish,true);
+    window.addEventListener('pointercancel',finish,true);
+    window.addEventListener('blur',finish);
+    return ()=>{window.removeEventListener('pointerup',finish,true);window.removeEventListener('pointercancel',finish,true);window.removeEventListener('blur',finish);};
+  },[]);
   // While a document is dragged, the folders stay reachable however far the list has scrolled.
   const [noteDragging,setNoteDragging]=useState(false);
   useEffect(()=>{
