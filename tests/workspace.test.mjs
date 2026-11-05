@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialWorkspace, validateWorkspace, calendarDays, localDate, newNote } from '../src/model.ts';
+import { initialWorkspace, validateWorkspace, calendarDays, localDate, newNote, milestoneStatus, daysUntil } from '../src/model.ts';
 import { listLocalFiles, openLocalNote, saveLocalNote, safeFilename, parseDrawing } from '../src/local-files.ts';
 
 function directory(name, files = {}) {
@@ -111,4 +111,20 @@ test('saving a drawing-only edit does not create an empty Markdown companion', a
 test('invalid drawings are rejected and filenames cannot traverse directories', () => {
   assert.throws(()=>parseDrawing('{"type":"excalidraw","elements":[null]}'),/valid Excalidraw/);
   assert.equal(safeFilename('../../some/file'),'-..-some-file');
+});
+
+test('milestones survive backup validation with no time and report what is left',()=>{
+  const workspace=initialWorkspace();
+  workspace.plans.push({id:'m',kind:'milestone',title:'Finish DSA',date:'2026-12-01',time:'',duration:60,company:'',round:'',notes:'',noteId:'',done:false});
+  assert.doesNotThrow(()=>validateWorkspace(workspace));
+  workspace.plans[0].kind='goal';
+  assert.throws(()=>validateWorkspace(workspace),/invalid plan/);
+  const status=(date,done=false)=>milestoneStatus({date,done},'2026-03-07');
+  assert.equal(status('2026-03-07'),'Due today');
+  assert.equal(status('2026-03-08'),'Due tomorrow');
+  assert.equal(status('2026-03-10'),'3 days left');
+  assert.equal(status('2026-03-06'),'1 day overdue');
+  assert.equal(status('2026-03-01'),'6 days overdue');
+  assert.equal(status('2026-03-01',true),'Finished');
+  assert.equal(daysUntil('2026-04-01','2026-03-01'),31,'counts whole days across a daylight-saving change');
 });

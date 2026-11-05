@@ -308,3 +308,11 @@ kbd{font:inherit;font-size:calc(11px*var(--font-scale));padding:1px 5px;border:1
 :root[data-theme=dark] .note-selection{background:#2a2640}
 :root[data-theme=dark] .note-selection strong{color:#cdbcf8}
 :root[data-theme=dark] .note-selection small{color:#b5a8c3}
+
+/* Milestones */
+.planner-stats{grid-template-columns:repeat(4,1fr)}
+@media(max-width:560px){.planner-stats{grid-template-columns:repeat(2,1fr)}}
+.milestone-flag{color:#b9843a;flex-shrink:0}
+.day-events .milestone{background:#fbf1df;color:#8a6426;font-weight:600}
+.day-events .milestone svg{vertical-align:-1px;margin-right:3px}
+.day-events .milestone.missed{background:#fbe7e4;color:#a2483c}

@@ -44,6 +44,7 @@ npm run build # TypeScript checking and production build
 - Markdown editing, formatting controls, preview, split view, search within collections, and Markdown export.
 - A real embedded Excalidraw editor for every note, including scene images stored with the drawing. Use the button at the top right of the board to expand it to full screen.
 - Prep tasks and interview scheduling with company, round, date, local time, duration, details, and linked notes.
+- **Milestones**: use **Add milestone** on the Calendar or Planner to set what you should finish by a date, with an optional time, details, and a linked note. Each one is flagged on the calendar, shows the days left or overdue, and stays in **Coming up next** until you tick it off. An overdue milestone turns red.
 - Monthly calendar, completion tracking, and `.ics` export for saved plans.
 - Automatic browser persistence using IndexedDB and complete JSON backup export/import.
 

@@ -3,7 +3,7 @@ export type Experience = { company: string; role: string; round: string; date: s
 export type DocumentFolder = {id:string; section:Section; name:string};
 export type Note = { folderId?: string; pinned?: boolean; marked?: boolean; tags?: string[]; importance?: number; experience?: Experience; id: string; section: Section; title: string; body: string; updatedAt: string; ready: boolean; scene?: { elements: readonly any[]; appState: Record<string, any>; files: Record<string, any> } };
 export type Resume = { name: string; data: string; type: string; size: number };
-export type Plan = { id: string; kind: 'task' | 'interview'; title: string; date: string; time: string; duration: number; company: string; round: string; notes: string; noteId: string; done: boolean };
+export type Plan = { id: string; kind: 'task' | 'interview' | 'milestone'; title: string; date: string; time: string; duration: number; company: string; round: string; notes: string; noteId: string; done: boolean };
 export type UploadedFile = { id: string; section: Section; name: string; type: string; size: number; addedAt: string };
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 export type SectionConfig = { id: Section; name: string; short: string; description: string; color: string; icon: string; hidden?: boolean; template?: string };
@@ -91,6 +91,15 @@ export function newNote(section: Section, template = true, config?: SectionConfi
 }
 export function initialWorkspace(): Workspace { return { version: 1, notes: defaultSections.filter(s => s.id !== 'experiences' && s.id !== 'reflections').map(s => newNote(s.id)), plans: [] }; }
 export function localDate(date = new Date()): string { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
+/** Whole calendar days from `today` to `date`; negative once the date has passed. */
+export function daysUntil(date: string, today = localDate()): number { const day = (value: string) => { const [y, m, d] = value.split('-').map(Number); return Date.UTC(y, m - 1, d); }; return Math.round((day(date) - day(today)) / 86400000); }
+export function milestoneStatus(plan: Pick<Plan, 'date' | 'done'>, today = localDate()): string {
+  if (plan.done) return 'Finished';
+  const days = daysUntil(plan.date, today);
+  if (days === 0) return 'Due today';
+  if (days === 1) return 'Due tomorrow';
+  return days > 0 ? `${days} days left` : `${-days} ${days === -1 ? 'day' : 'days'} overdue`;
+}
 export function calendarDays(year: number, month: number): Date[] { const first = new Date(year, month, 1); const offset = (first.getDay() + 6) % 7; return Array.from({ length: 42 }, (_, i) => new Date(year, month, i - offset + 1)); }
 const reservedRoutes=['overview','planner','calendar'];
 // Built-ins missing from a saved list are appended so a section added in a later version still appears.
@@ -127,7 +136,7 @@ export function validateWorkspace(value: unknown): Workspace {
   }
   const planIds = new Set<string>();
   for (const p of w.plans) {
-    if (!p || typeof p.id !== 'string' || planIds.has(p.id) || !['task', 'interview'].includes(p.kind) || !['title','date','time','company','round','notes','noteId'].every(key => typeof p[key as keyof Plan] === 'string') || !/^\d{4}-\d{2}-\d{2}$/.test(p.date) || localDate(new Date(`${p.date}T12:00:00`)) !== p.date || (p.time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(p.time)) || !Number.isFinite(p.duration) || p.duration <= 0 || typeof p.done !== 'boolean') throw new Error('The backup contains an invalid plan.');
+    if (!p || typeof p.id !== 'string' || planIds.has(p.id) || !['task', 'interview', 'milestone'].includes(p.kind) || !['title','date','time','company','round','notes','noteId'].every(key => typeof p[key as keyof Plan] === 'string') || !/^\d{4}-\d{2}-\d{2}$/.test(p.date) || localDate(new Date(`${p.date}T12:00:00`)) !== p.date || (p.time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(p.time)) || !Number.isFinite(p.duration) || p.duration <= 0 || typeof p.done !== 'boolean') throw new Error('The backup contains an invalid plan.');
     planIds.add(p.id);
   }
   if(w.uploads !== undefined && !Array.isArray(w.uploads)) throw new Error('The backup contains invalid uploaded files.');

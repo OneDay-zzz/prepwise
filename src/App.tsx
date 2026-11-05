@@ -229,7 +229,7 @@ export default function App() {
     setFocusedPane(1);
   };
   const completed=shownNotes.filter(n => n.ready).length;
-  const upcoming=[...workspace.plans].filter(p => !p.done && p.date >= localDate()).sort((a,b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
+  const upcoming=[...workspace.plans].filter(p => !p.done && (p.date >= localDate() || p.kind === 'milestone')).sort((a,b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
   const recent=[...shownNotes].sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0,4);
   return <div className={`app-shell ${layout.sidebarCollapsed ? 'sidebar-collapsed' : ''}`} style={{...(layout.sidebarWidth ? {'--sidebar-width':`${layout.sidebarWidth}px`} : {}),...(layout.listWidth ? {'--list-width':`${layout.listWidth}px`} : {}),...(layout.outlineWidth ? {'--outline-width':`${layout.outlineWidth}px`} : {})} as CSSProperties}>
     {mobileNav && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)}/>}

@@ -95,3 +95,7 @@
 :root[data-theme=dark] .checkpoint-warning{background:#3b2e29;border-color:#654b38;color:#d9b898}
 :root[data-theme=dark] .checkpoint-error{background:#422735;color:#e6a6be}
 :root[data-theme=dark] .checkpoint-message{background:#263b33;color:#add1bc}
+
+:root[data-theme=dark] .milestone-flag{color:#e0b56d}
+:root[data-theme=dark] .day-events .milestone{background:#4a3a1e;color:#ecd09a}
+:root[data-theme=dark] .day-events .milestone.missed{background:#552c28;color:#f0b5ac}
