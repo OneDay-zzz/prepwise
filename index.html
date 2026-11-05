@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6f7f9" />
+    <meta name="description" content="Your personal interview notebook. Prepare your resume, stories, project deep dives, and coding patterns in one place." />
+    <script>
+      try {
+        const savedTheme = localStorage.getItem('prepwise-theme');
+        const theme = savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        const display = JSON.parse(localStorage.getItem('prepwise-display') || '{}');
+        const scale = (value, max) => Number.isFinite(value) ? Math.min(max, Math.max(80, value)) / 100 : 1;
+        document.documentElement.style.setProperty('--font-scale', scale(display.interface, 150));
+        document.documentElement.style.setProperty('--doc-font-scale', scale(display.document, 200));
+      } catch {}
+    </script>
+    <title>Prepwise — Interview workspace</title>
+  </head>
+  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+</html>
