@@ -1,0 +1,28 @@
+/* The palette. Every color in the app comes from here, so light and dark can't drift apart. */
+:root{
+  --bg:#f7f7f9;--surface:#fff;--surface-2:#f3f3f6;--surface-3:#e9e9ee;
+  --border:#e3e3e9;--border-strong:#c9c9d3;
+  --text:#1e2028;--text-2:#464954;--text-3:#62656f;
+  --accent:#5a4ac4;--accent-hover:#4b3cae;--accent-text:#4f40b4;--accent-soft:#efedfb;--accent-soft-2:#e1ddf8;--on-accent:#fff;--focus:#7a6ce4;
+  --danger:#b3243a;--danger-soft:#fcedef;--danger-border:#f1c4cc;
+  --success:#1a7650;--success-soft:#e7f4ee;--success-border:#bbe0ce;
+  --warning:#8a5608;--warning-soft:#fcf2df;--warning-border:#eed7a5;
+  --info:#29609f;--info-soft:#e8f0fa;--info-border:#c0d5ef;
+  --shadow-sm:0 1px 2px #14162012;--shadow-md:0 4px 14px #1416201a;--shadow-lg:0 16px 48px #14162033;
+  --radius-sm:6px;--radius-md:8px;--radius-lg:12px;
+  --muted:var(--text-3);--purple:var(--accent-text);
+}
+:root[data-theme=dark]{
+  color-scheme:dark;
+  --bg:#121317;--surface:#1a1b21;--surface-2:#21222a;--surface-3:#2b2c36;
+  --border:#2e2f39;--border-strong:#454651;
+  --text:#ececf1;--text-2:#c4c5cf;--text-3:#a0a1ad;
+  --accent:#6a5bdc;--accent-hover:#7b6de8;--accent-text:#b9b0f8;--accent-soft:#2a2746;--accent-soft-2:#37325c;--on-accent:#fff;--focus:#a096f2;
+  --danger:#f2929f;--danger-soft:#3a2026;--danger-border:#6a3640;
+  --success:#71cfa7;--success-soft:#1a3228;--success-border:#2f5a47;
+  --warning:#e7b868;--warning-soft:#36290f;--warning-border:#60491d;
+  --info:#8db6f3;--info-soft:#1c2b41;--info-border:#34507a;
+  --shadow-sm:0 1px 2px #0006;--shadow-md:0 4px 14px #00000066;--shadow-lg:0 16px 48px #00000099;
+}
+:root{--topbar:52px}
+@media(max-width:760px){:root{--topbar:56px}}

@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowDown, ArrowUp, AtSign, Check, ChevronDown, ChevronRight, LoaderCircle, Plus, RotateCcw, Sparkles, Square, Trash2, TriangleAlert, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, AtSign, Check, ChevronDown, ChevronRight, LoaderCircle, Mic, Plus, RotateCcw, Sparkles, Square, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-react';
 import { activeMention, LONG_CHAT_TOKENS, changeLines, chatModels, diffCounts, diffHunks, matchContext, messageContext, modelName, tokenTotal, type ContextItem, type ChatChange, type ChatMessage, type ChatModel } from './doc-chat-model';
 import { applyAnyway, chatContextItems, chatIndex, chatModel, chatState, chatVersion, deleteThread, discardChange, loadChat, newThread, selectThread, sendChat, setChatModel, stopChat, subscribeChats, undoChange } from './doc-chat-store';
+import { canDictate, canReadAloud, joinDictation, readAloud, saveSpeechLanguage, savedSpeechLanguage, speakingMessage, speechLanguages, startDictation, stopSpeaking, subscribeSpeaking, type Dictation, type SpeechLanguage } from './chat-speech';
 import { clampColumn, columnLimits } from './layout-settings';
 
 const DEFAULT_WIDTH=360;
@@ -37,11 +38,13 @@ function ChangeCard({chatId,noteId,messageId,index,change,onOpen}: {chatId:strin
   </div>;
 }
 
-function Message({chatId,noteId,message,onOpen}: {chatId:string;noteId:string;message:ChatMessage;onOpen:(id:string)=>void}) {
+function Message({chatId,noteId,message,writing,onOpen}: {chatId:string;noteId:string;message:ChatMessage;writing:boolean;onOpen:(id:string)=>void}) {
+  const speaking=useSyncExternalStore(subscribeSpeaking,speakingMessage)===message.id;
   if(message.role==='user') return <div className="chat-message is-user">{message.text}</div>;
   return <div className={`chat-message is-assistant ${message.error ? 'is-error' : ''}`}>
     {!!message.tools?.length && <details className="chat-tools"><summary>{message.tools.length} {message.tools.length===1 ? 'step' : 'steps'}</summary>{message.tools.map((tool,i)=><div key={i}>{tool}</div>)}</details>}
     {message.text && <div className="chat-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown></div>}
+    {message.text && !message.error && !writing && canReadAloud() && <button className={`icon-button chat-read ${speaking ? 'is-on' : ''}`} aria-label={speaking ? 'Stop reading aloud' : 'Read aloud'} aria-pressed={speaking} title={speaking ? 'Stop reading aloud' : 'Read aloud. Code and links are skipped.'} onClick={()=>speaking ? stopSpeaking() : readAloud(message.id,message.text)}>{speaking ? <VolumeX size={14}/> : <Volume2 size={14}/>}</button>}
     {message.model && <small className="chat-model" title={message.usage ? `${message.usage.input.toLocaleString()} new input, ${message.usage.cacheWrite.toLocaleString()} newly cached, ${message.usage.cacheRead.toLocaleString()} reused from cache, ${message.usage.output.toLocaleString()} output` : undefined}>{modelName(message.model)}{message.usage ? ` · ${tokenTotal(message.usage).toLocaleString()} tokens` : ''}</small>}
     {message.stopped && <small className="chat-stopped">Stopped. Nothing from this answer was changed.</small>}
     {message.changes?.map((change,i)=><ChangeCard key={i} chatId={chatId} noteId={noteId} messageId={message.id} index={i} change={change} onOpen={onOpen}/>)}
@@ -69,10 +72,14 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
   const pinned=useRef(true);
   const selecting=useRef(false);
   const input=useRef<HTMLTextAreaElement>(null);
+  const dictation=useRef<Dictation|null>(null);
+  const [listening,setListening]=useState(false);
+  const [speechLanguage,setSpeechLanguage]=useState<SpeechLanguage>(savedSpeechLanguage);
   const wanted=dragWidth ?? width ?? DEFAULT_WIDTH;
   const lastUsage=state.messages.at(-1)?.usage;
 
   useEffect(()=>{void loadChat(chatId);},[chatId]);
+  useEffect(()=>()=>{dictation.current?.abort();stopSpeaking();},[threadId]);
   useEffect(()=>{setDraft('');setPicked([]);setMention(null);setNotice('');pinned.current=true;},[threadId]);
   // The panel follows its window. A fixed position lets the document scroll behind without moving it.
   // The space is set as a style because React rewrites these elements' classes when the page changes.
@@ -142,12 +149,28 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
 
   const send=(text=draft)=>{
     if(!text.trim() || state.running)return;
+    dictation.current?.abort();
     const context=messageContext(text,picked);
     setDraft('');
     setPicked([]);
     setMention(null);
     pinned.current=true;
     void sendChat(chatId,threadId,text.trim(),context);
+    input.current?.focus();
+  };
+  const toggleDictation=()=>{
+    if(dictation.current) {dictation.current.stop();return;}
+    const start=input.current?.selectionStart ?? draft.length,end=input.current?.selectionEnd ?? draft.length;
+    const before=draft.slice(0,start),after=draft.slice(end);
+    setNotice('');
+    setMention(null);
+    const started=startDictation(speechLanguage,spoken=>setDraft(joinDictation(before,spoken,after)),error=>{
+      dictation.current=null;
+      setListening(false);
+      if(error)setNotice(error);
+    });
+    dictation.current=started;
+    setListening(!!started);
     input.current?.focus();
   };
   const readMention=(text:string,caret:number)=>{
@@ -210,8 +233,8 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
       {!ends.bottom && <button aria-label="Go to the bottom" title="Go to the bottom (End)" onClick={()=>goTo('bottom')}><ArrowDown size={14}/></button>}
     </div>
     <div ref={list} className="doc-chat-messages" tabIndex={0} aria-label="Messages" onKeyDown={e=>{if(e.key==='Home'){e.preventDefault();goTo('top');}else if(e.key==='End'){e.preventDefault();goTo('bottom');}}} onMouseDown={startSelecting} onScroll={e=>{const el=e.currentTarget;if(!selecting.current)pinned.current=el.scrollHeight-el.scrollTop-el.clientHeight<40;readEnds();}}>
-      {!state.messages.length && <div className="doc-chat-empty"><p>{copy.intro}</p>{copy.suggestions.map(text=><button key={text} className="small-button" onClick={()=>send(text)}>{text}</button>)}</div>}
-      {state.messages.map(message=><Message key={message.id} chatId={chatId} noteId={threadId} message={message} onOpen={onOpenNote}/>)}
+      {!state.messages.length && <div className="doc-chat-empty"><p>{copy.intro}</p>{copy.suggestions.map(text=><button key={text} className="small-button" onClick={()=>send(text)}>{text}</button>)}<small>Uses your Claude Code plan. What Claude reads is sent to Anthropic. If you use the mic, your browser sends your voice to its speech service, which is Google in Chrome.</small></div>}
+      {state.messages.map(message=><Message key={message.id} chatId={chatId} noteId={threadId} message={message} writing={state.running && message===state.messages.at(-1)} onOpen={onOpenNote}/>)}
       {state.running && <div className="doc-chat-activity"><LoaderCircle size={13} className="spin"/>{state.activity || 'Writing…'}</div>}
       {!state.running && lastUsage && tokenTotal(lastUsage)>LONG_CHAT_TOKENS && <div className="doc-chat-long"><span>This chat is getting long, so each message resends a lot.</span><button className="text-button" onClick={()=>newThread(chatId)}>Start a new chat</button></div>}
     </div>
@@ -219,9 +242,9 @@ export default function DocChat({chatId,title,label,host,everything=false,width,
     <div className="doc-chat-composer">
       {mention && <div className="chat-mentions" role="listbox" aria-label="Add to this message">{mention.items.map((item,i)=><button key={item.id} role="option" aria-selected={i===mention.active} className={i===mention.active ? 'is-active' : ''} onMouseDown={e=>{e.preventDefault();pick(item);}}><strong>{item.title}</strong><small>{item.detail}</small></button>)}</div>}
       {chosen.length>0 && <div className="chat-chosen" aria-label="Claude can only use these for this message"><small>Only:</small>{chosen.map(item=><span key={item.id}>{item.title}<button aria-label={`Remove ${item.title}`} onClick={()=>removePick(item)}><X size={11}/></button></span>)}</div>}
-      <textarea ref={input} rows={2} aria-label="Message Claude" placeholder={copy.placeholder} value={draft} onChange={e=>{setDraft(e.target.value);readMention(e.target.value,e.target.selectionStart);}} onKeyDown={onKeyDown}/>
+      <textarea ref={input} rows={2} aria-label="Message Claude" placeholder={listening ? 'Listening…' : copy.placeholder} value={draft} onChange={e=>{dictation.current?.abort();setDraft(e.target.value);readMention(e.target.value,e.target.selectionStart);}} onKeyDown={onKeyDown}/>
       {state.running ? <button className="primary doc-chat-send" aria-label="Stop" title="Stop" onClick={()=>stopChat(threadId)}><Square size={13}/></button> : <button className="primary doc-chat-send" aria-label="Send" title="Send (Enter)" disabled={!draft.trim()} onClick={()=>send()}><ArrowUp size={15}/></button>}
-      <div className="doc-chat-model"><button className="icon-button chat-at" aria-label="Add a doc to this message" title="Limit this message to specific docs, to save tokens" onClick={startMention}><AtSign size={14}/></button><label>Model<select value={model} onChange={e=>setChatModel(e.target.value as ChatModel)}>{chatModels.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</select></label><small>Uses your Claude Code plan. What Claude reads is sent to Anthropic.</small></div>
+      <div className="doc-chat-model"><button className="icon-button chat-at" aria-label="Add a doc to this message" title="Limit this message to specific docs, to save tokens" onClick={startMention}><AtSign size={14}/></button>{canDictate() && <><button className={`icon-button chat-mic ${listening ? 'is-listening' : ''}`} aria-label={listening ? 'Stop dictating' : 'Dictate a message'} aria-pressed={listening} title={listening ? 'Stop dictating' : 'Dictate a message. Your browser sends your voice to its speech service, which is Google in Chrome.'} onClick={toggleDictation}><Mic size={14}/></button><select className="chat-speech-language" aria-label="Dictation language" title="Dictation language" value={speechLanguage} onChange={e=>{const next=e.target.value as SpeechLanguage;dictation.current?.stop();setSpeechLanguage(next);saveSpeechLanguage(next);}}>{speechLanguages.map(language=><option key={language.id} value={language.id}>{language.label}</option>)}</select></>}<label>Model<select value={model} onChange={e=>setChatModel(e.target.value as ChatModel)}>{chatModels.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</select></label></div>
     </div>
   </aside>;
 }

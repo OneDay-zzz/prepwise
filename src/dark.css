@@ -1,101 +1,10 @@
-/* Theme colors are explicit so documents and diagrams retain their original colors. */
-:root[data-theme=dark]{color-scheme:dark;background:#16171d;color:#dddce7;--accent:#b6a3f4;--border:#30303c;--muted:#9b98ac;--purple:#b2a1e7}
-:root[data-theme=dark] body{background:#16171d}
-:root[data-theme=dark] :is(.sidebar,.panel,.toolkit-card,.editor-shell,.plan-modal,.folder-edit-dialog){background:#20212a;border-color:#32323f;color:#dedbe8}
-:root[data-theme=dark] :is(.topbar,.note-list){background:#1b1c24;border-color:#30303c}
-:root[data-theme=dark] :is(h1,h2,h3,.note-title,.breadcrumb strong,.workspace-label strong,.recent-row strong){color:#e4e0ed}
-:root[data-theme=dark] :is(.workspace-label,.search-box,.markdown-preview pre,.markdown-preview th){background:#252530;border-color:#373542}
-:root[data-theme=dark] :is(.avatar,.nav-item.active,.note-list-item.selected,.folder-options>button.selected){background:#39304f;color:#c9b4f4;border-color:#4c3e66}
-:root[data-theme=dark] :is(.nav-item,.icon-button){color:#b0a6c2}
-:root[data-theme=dark] :is(.nav-item:hover,.icon-button:hover,.note-list-item:hover,.folder-options>button:hover,.local-file-list>button:hover){background:#302a3f;color:#d1b8ed}
-:root[data-theme=dark] :is(.nav-label,.workspace-badge,.workspace-label div>span,.local-note,.breadcrumb,.save-status,.eyebrow,.subtle,.section-heading>span,.page-footer,.note-meta,.note-list-heading p,.note-list-item small,.no-results){color:#a299b1}
-:root[data-theme=dark] :is(.progress-card,.tip-bar,.overview-summary,.template-button,.resume-upload,.folder-bar,.experience-details){background:#292334;border-color:#3e334e}
-:root[data-theme=dark] :is(.progress-card p,.tip-bar div>span,.overview-summary,.resume-upload p,.folder-path,.folder-help,.local-file-list p){color:#b2a3c1}
-:root[data-theme=dark] :is(.progress-card strong,.tip-bar strong,.overview-summary strong,.overview-summary>span,.resume-upload strong,.template-button){color:#d2b7e7}
-:root[data-theme=dark] .progress-track{background:#433454}
-:root[data-theme=dark] .progress-track span{background:#b08ae1}
-:root[data-theme=dark] :is(.tip-icon,.upload-icon,.empty-icon){background:#3c2e4d;border-color:#503b63;color:#c7a5e1}
-:root[data-theme=dark] :is(.small-button,.company-collection-filter select,.document-list-filters select,.move-document){background:#292531;border-color:#494052;color:#c4b4d0}
-:root[data-theme=dark] .small-button:hover{background:#3b2e4b;border-color:#705481;color:#e3c7f4}
-:root[data-theme=dark] .primary{background:#8c65b9;border-color:#9b73c4;color:#fff}
-:root[data-theme=dark] .primary:hover{background:#a17ace}
-:root[data-theme=dark] .text-button{color:#c2a2db}
-:root[data-theme=dark] .text-button:hover{color:#e1c4f6}
-:root[data-theme=dark] :is(.toolkit-card p,.page-heading p,.card-footer,.empty-state p,.markdown-preview,.note-list-item p,.show-completed){color:#b5a8c3}
-:root[data-theme=dark] :is(.card-footer,.recent-row,.panel-heading,.plan-row,.editor-controls,.markdown-toolbar,.modal-footer,.folder-manager,.local-note){border-color:#38303f}
-:root[data-theme=dark] :is(.recent-row:hover,.calendar-day:hover,.calendar-day.selected){background:#302638}
-:root[data-theme=dark] :is(.note-list-item strong,.plan-info strong,.empty-state h3,.plan-modal label,.folder-edit-dialog label,.experience-fields label){color:#d3badf}
-:root[data-theme=dark] :is(.plan-info span,.date-tag,.field-hint,.tag-hint,.company-note-label){color:#b7a0c6}
-:root[data-theme=dark] :is(.date-tag,.note-status){background:#372f3d;color:#c7add5}
-:root[data-theme=dark] .date-tag.overdue{background:#422b36;color:#e6a9b7}
-:root[data-theme=dark] :is(.note-status.ready,.ready-button.is-ready){background:#263e38;color:#a4d0bf;border-color:#3f6658}
+/* Dark colors live in tokens.css. Only the section tints and overlays need their own values here. */
+:root[data-theme=dark] body{background:var(--bg)}
+:root[data-theme=dark] :is(.nav-scrim,.modal-backdrop){background:#08060c99}
+:root[data-theme=dark] :is(.resume-preview-dialog,.folder-edit-dialog)::backdrop{background:#08060cbb}
 :root[data-theme=dark] .purple .section-icon,:root[data-theme=dark] .note-icon.purple{background:#3c2d50;color:#c4a1e6}
 :root[data-theme=dark] .orange .section-icon,:root[data-theme=dark] .note-icon.orange{background:#45332c;color:#dcb493}
 :root[data-theme=dark] .blue .section-icon,:root[data-theme=dark] .note-icon.blue{background:#2a354b;color:#9ebbe9}
 :root[data-theme=dark] .green .section-icon,:root[data-theme=dark] .note-icon.green{background:#293e35;color:#a4ceb5}
 :root[data-theme=dark] .rose .section-icon,:root[data-theme=dark] .note-icon.rose{background:#472e40;color:#deb0ca}
 :root[data-theme=dark] .amber .section-icon,:root[data-theme=dark] .note-icon.amber{background:#423a28;color:#d5c08b}
-:root[data-theme=dark] :is(.plan-modal input,.plan-modal textarea,.plan-modal select,.folder-edit-dialog input,.experience-fields input){background:#211c28;color:#dbc6e6;border-color:#51415e}
-:root[data-theme=dark] :is(.plan-modal input,.plan-modal textarea,.folder-edit-dialog input,.experience-fields input)::placeholder{color:#9e87ac}
-:root[data-theme=dark] .markdown-editor textarea{background:#20212a;color:#d0bedb}
-:root[data-theme=dark] :is(.markdown-editor textarea,.search-box input,.document-tags>input)::placeholder{color:#9e8aad}
-:root[data-theme=dark] :is(.search-box input,.document-tags>input){color:#d3bce3}
-:root[data-theme=dark] :is(.markdown-preview h1,.markdown-preview h2,.markdown-preview h3){color:#e1cee9}
-:root[data-theme=dark] .markdown-preview blockquote{background:#302538;color:#c7aad8;border-color:#9670ad}
-:root[data-theme=dark] .markdown-preview code{background:#362b40;color:#d2b5e4}
-:root[data-theme=dark] .markdown-preview pre code{background:transparent;color:#cbb9da}
-:root[data-theme=dark] .markdown-preview a{color:#cba6e7}
-:root[data-theme=dark] .markdown-toolbar button,:root[data-theme=dark] .editor-tabs button{color:#aa92bd}
-:root[data-theme=dark] .markdown-toolbar button:hover{background:#3c2c4c}
-:root[data-theme=dark] .editor-tabs button.active{color:#dbb8f2;border-color:#ba8ed6}
-:root[data-theme=dark] .segmented{background:#251e2e}
-:root[data-theme=dark] .segmented button{color:#ac91bd}
-:root[data-theme=dark] .segmented button.active{background:#493353;color:#e1bfef}
-:root[data-theme=dark] .planner-stats>div{background:#25212d;border-color:#3d3149}
-:root[data-theme=dark] .planner-stats strong{color:#d7b9e6}
-:root[data-theme=dark] :is(.planner-stats span,.experience-heading,.experience-heading small,.folder-manager-heading,.company-collection-filter label){color:#b99bcb}
-:root[data-theme=dark] .calendar-day{border-color:#382b42}
-:root[data-theme=dark] .calendar-day>span{color:#d1b3df}
-:root[data-theme=dark] .calendar-day.outside{background:#211b29}
-:root[data-theme=dark] .calendar-day.outside>span{color:#75617f}
-:root[data-theme=dark] .calendar-day.selected{box-shadow:inset 0 0 0 1px #9472a9}
-:root[data-theme=dark] .calendar-day .today{background:#9c75b4;color:#fff}
-:root[data-theme=dark] .day-events .interview{background:#4b315c;color:#dfbce9}
-:root[data-theme=dark] .day-events .task{background:#29433e;color:#a8d3c3}
-:root[data-theme=dark] :is(.calendar-legend,.weekdays){color:#bfa3cd}
-:root[data-theme=dark] .check-button{border-color:#8a6b9b}
-:root[data-theme=dark] .check-button.checked{background:#ac81c2}
-:root[data-theme=dark] .plan-row.done .plan-info strong{color:#a289af}
-:root[data-theme=dark] :is(.document-flags .flag-active,.document-tag,.note-badges>span){background:#45304f;border-color:#6a477c;color:#dfb6ee}
-:root[data-theme=dark] .document-tag button:hover{background:#69437c;color:#f1d0ff}
-:root[data-theme=dark] .document-tags{color:#c09ed2}
-:root[data-theme=dark] .folder-options>button{color:#c6abd6}
-:root[data-theme=dark] .folder-options small{color:#ad8ebd}
-:root[data-theme=dark] .field-error{color:#ef9fb7}
-:root[data-theme=dark] .danger:hover{color:#efa6bc;background:#4a2938}
-:root[data-theme=dark] .toast{background:#4d375b;color:#f3e6fa}
-:root[data-theme=dark] :is(.resume-viewer,.resume-viewer-stage){background:#211b29;border-color:#44334f}
-:root[data-theme=dark] :is(.resume-viewer-toolbar,.resume-viewer-footer){background:#2b2234;border-color:#44334f}
-:root[data-theme=dark] .resume-fit-controls{background:#211928}
-:root[data-theme=dark] .resume-fit-controls button[aria-pressed=true]{background:#51365f;color:#ebc9f5}
-:root[data-theme=dark] :is(.resume-viewer-label,.resume-viewer-actions .icon-button,.resume-fit-controls button,.resume-viewer-footer a){color:#cfb1de}
-:root[data-theme=dark] .resume-viewer-format{background:#46304f;color:#d3b0df}
-:root[data-theme=dark] .resume-toolbar-divider{background:#584061}
-:root[data-theme=dark] :is(.nav-scrim,.modal-backdrop){background:#08060c99}
-:root[data-theme=dark] .resume-preview-dialog::backdrop,:root[data-theme=dark] .folder-edit-dialog::backdrop{background:#08060cbb}
-:root[data-theme=dark] .theme-control{background:#292331;border-color:#493a56}
-:root[data-theme=dark] .theme-control>span{color:#9985a9}
-:root[data-theme=dark] .theme-control>span.current{color:#e0c2f1}
-:root[data-theme=dark] .checkpoint-dialog{background:#25202e;border-color:#493655;color:#d8bedf}
-:root[data-theme=dark] .checkpoint-dialog h2{color:#e8d1ef}
-:root[data-theme=dark] :is(.checkpoint-repo,.checkpoint-setup){background:#302337;border-color:#53385e}
-:root[data-theme=dark] .checkpoint-repo strong{color:#dab6e8}
-:root[data-theme=dark] :is(.checkpoint-intro,.checkpoint-repo span,.checkpoint-local,.checkpoint-auto span,.checkpoint-setup p,.checkpoint-status){color:#bfa2cb}
-:root[data-theme=dark] .checkpoint-dialog code{background:#432b4c;color:#dbafe9}
-:root[data-theme=dark] .checkpoint-warning{background:#3b2e29;border-color:#654b38;color:#d9b898}
-:root[data-theme=dark] .checkpoint-error{background:#422735;color:#e6a6be}
-:root[data-theme=dark] .checkpoint-message{background:#263b33;color:#add1bc}
-
-:root[data-theme=dark] .milestone-flag{color:#e0b56d}
-:root[data-theme=dark] .day-events .milestone{background:#4a3a1e;color:#ecd09a}
-:root[data-theme=dark] .day-events .milestone.missed{background:#552c28;color:#f0b5ac}

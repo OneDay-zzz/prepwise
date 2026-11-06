@@ -8,7 +8,7 @@ export default function useTheme() {
   useEffect(()=>{
     document.documentElement.dataset.theme=theme;
     document.documentElement.style.colorScheme=theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#16171d':'#f6f7f9');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#121317':'#f7f7f9');
     try{localStorage.setItem('prepwise-theme',theme);}catch { /* The in-memory theme still works. */ }
   },[theme]);
   return [theme,()=>setTheme(value=>value==='dark'?'light':'dark')] as const;
