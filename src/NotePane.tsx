@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent, type RefObject } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent, type RefObject, type ClipboardEvent } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Bold, BookOpen, CheckCircle2, Circle, Clock3, Code2, Columns2, Download, Italic, List, ListTree, LoaderCircle, MessageCircle, PenLine, SquarePen, Table2, TextCursorInput, Trash2, X } from 'lucide-react';
@@ -9,11 +9,13 @@ import { safeFilename } from './local-files';
 import { newDocTab, noteWordCount, type DocTabKind, type Note, type SectionConfig, type UploadedFile, type Workspace } from './model';
 import { noteExtension, noteMimeType, noteToMarkdown } from './note-files';
 import TableEditor from './TableEditor';
+import EditorToolbar from './EditorToolbar';
+import { editMarkdown, insertLink, type TextEdit, type ToolbarAction } from './markdown-edits';
 import DocTabs from './DocTabs';
 import { STARTER_TABLE } from './doc-formats';
 import { noteOutline, type NotePart } from './note-outline';
 import NoteOutline from './NoteOutline';
-import { linkNoteImages, UPLOAD_URL_PREFIX } from './note-images';
+import { linkNoteImages, UPLOAD_URL_PREFIX, insertPictures, type SavedPicture } from './note-images';
 import NoteImage from './NoteImage';
 import { download } from './Planner';
 
@@ -25,6 +27,7 @@ const viewNames: Record<NoteMode,string>={preview:'Read',live:'Live',edit:'Write
 type Props = {
   readyLabels: {mark:string;done:string};
   onTabDeleted: (name:string)=>void;
+  onPictures: (files:File[])=>Promise<SavedPicture[]>;
   note: Note;
   mode: NoteMode;
   onMode: (mode: NoteMode) => void;
@@ -56,7 +59,7 @@ type Props = {
   onAddDrawing: (svg: string) => Promise<void>;
 };
 
-export default function NotePane({onTabDeleted,readyLabels,note,mode:requestedMode,onMode,theme,sectionName,sections,detailsOpen,onToggleDetails,outlineOpen,onToggleOutline,onOutlineWidth,chatOpen,chatWidth,onToggleChat,onChatWidth,onOpenNote,onTransfer,onSplit,notes,allTags,folders,uploads,boardTaken,onChange,onDelete,onViewDragStart,onViewDragEnd,onAddDrawing}: Props) {
+export default function NotePane({onPictures,onTabDeleted,readyLabels,note,mode:requestedMode,onMode,theme,sectionName,sections,detailsOpen,onToggleDetails,outlineOpen,onToggleOutline,onOutlineWidth,chatOpen,chatWidth,onToggleChat,onChatWidth,onOpenNote,onTransfer,onSplit,notes,allTags,folders,uploads,boardTaken,onChange,onDelete,onViewDragStart,onViewDragEnd,onAddDrawing}: Props) {
   const editor=useRef<HTMLTextAreaElement>(null);
   // A view saved for this note, or the last one used, may not exist for its format.
   const [openTabs,setOpenTabs]=useState<Record<string,string>>({});
@@ -73,6 +76,39 @@ export default function NotePane({onTabDeleted,readyLabels,note,mode:requestedMo
   // A first tab that's already drawn on keeps its Whiteboard view. New boards are tabs of their own.
   const hasBoard=!tab && !!note.scene?.elements?.length || (!tab && mode==='board');
   const tabs=tab?.kind==='board' ? [] : doc.format==='text' ? [['edit','Text',SquarePen]] as const : doc.format==='table' ? [['preview','Table',Table2],['edit','CSV',SquarePen]] as const : hasBoard ? [...noteViews,['board','Whiteboard',PenLine]] as const : noteViews;
+  // Saving a picture takes a moment, and typing can continue meanwhile.
+  const latestDoc=useRef({body:doc.body,change});
+  latestDoc.current={body:doc.body,change};
+  const [fileOver,setFileOver]=useState(false);
+  const carriesFiles=(e:DragEvent)=>!doc.format && e.dataTransfer.types.includes('Files');
+  /** Saves the pictures, then puts them at the cursor in Write, or at the end if the text box isn't showing. */
+  const placePictures=async(files:File[])=>{
+    const area=editor.current;
+    const start=area?.selectionStart ?? doc.body.length,end=area?.selectionEnd ?? doc.body.length;
+    const pictures=await onPictures(files);
+    if(!pictures.length)return;
+    const body=latestDoc.current.body;
+    const placed=insertPictures(body,Math.min(start,body.length),Math.min(end,body.length),pictures);
+    latestDoc.current.change({body:placed.body});
+    requestAnimationFrame(()=>{area?.focus();area?.setSelectionRange(placed.caret,placed.caret);});
+  };
+  const pictureDrop=doc.format ? {} : {
+    onDragOver:(e:DragEvent)=>{if(!carriesFiles(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';setFileOver(true);},
+    onDragLeave:(e:DragEvent)=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setFileOver(false);},
+    onDrop:(e:DragEvent)=>{setFileOver(false);if(!carriesFiles(e))return;e.preventDefault();void placePictures(Array.from(e.dataTransfer.files));},
+    onPaste:(e:ClipboardEvent)=>{const files=Array.from(e.clipboardData.files);if(!files.length)return;e.preventDefault();void placePictures(files);},
+  };
+  // The formatting bar pins just below the document's tabs, however tall those are at this text size.
+  const stickyObserver=useRef<ResizeObserver|null>(null);
+  const measureSticky=useCallback((element:HTMLDivElement|null)=>{
+    stickyObserver.current?.disconnect();
+    if(!element)return;
+    const pane=element.closest<HTMLElement>('.doc-pane');
+    const measure=()=>pane?.style.setProperty('--doc-sticky',`${element.offsetHeight}px`);
+    measure();
+    stickyObserver.current=new ResizeObserver(measure);
+    stickyObserver.current.observe(element);
+  },[]);
   const openTab=(id:string)=>setOpenTabs(current=>({...current,[note.id]:id}));
   const addTab=(kind:DocTabKind)=>{const added=newDocTab(note,kind);onChange({tabs:[...(note.tabs || []),added]});openTab(added.id);};
   const renameTab=(id:string,name:string)=>{
@@ -85,21 +121,42 @@ export default function NotePane({onTabDeleted,readyLabels,note,mode:requestedMo
     onTabDeleted(target.name);
     onChange({tabs:note.tabs!.filter(item=>item.id!==id)});
   };
-  const insertMarkdown=(before:string,after='')=>{
+  /** Edits through the browser, so Undo in the text box still works afterward. */
+  const applyEdit=(next:TextEdit)=>{
     const area=editor.current;
-    if(!area) return;
-    const start=area.selectionStart,end=area.selectionEnd;
-    change({body:doc.body.slice(0,start)+before+doc.body.slice(start,end)+after+doc.body.slice(end)});
-    requestAnimationFrame(()=>{area.focus();area.setSelectionRange(start+before.length,end+before.length);});
+    if(!area)return;
+    const old=area.value;
+    let from=0;
+    while(from<old.length && from<next.text.length && old[from]===next.text[from])from++;
+    let tail=0;
+    while(tail<old.length-from && tail<next.text.length-from && old[old.length-1-tail]===next.text[next.text.length-1-tail])tail++;
+    area.focus();
+    area.setSelectionRange(from,old.length-tail);
+    const middle=next.text.slice(from,next.text.length-tail);
+    const done=middle ? document.execCommand('insertText',false,middle) : document.execCommand('delete');
+    if(!done || area.value!==next.text)change({body:next.text});
+    requestAnimationFrame(()=>{area.focus();area.setSelectionRange(next.start,next.end);});
+  };
+  const runAction=(action:ToolbarAction)=>{
+    const area=editor.current;
+    if(!area)return;
+    if(action==='undo' || action==='redo') {area.focus();document.execCommand(action);return;}
+    applyEdit(editMarkdown(area.value,area.selectionStart,area.selectionEnd,action));
+  };
+  const addLink=(url:string)=>{const area=editor.current;if(area)applyEdit(insertLink(area.value,area.selectionStart,area.selectionEnd,url));};
+  const onEditorKeys=(e:KeyboardEvent<HTMLTextAreaElement>)=>{
+    if(doc.format || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey)return;
+    const key=e.key.toLowerCase();
+    if(key==='b' || key==='i') {e.preventDefault();runAction(key==='b' ? 'bold' : 'italic');}
   };
   return <>
     {chatOpen && <DocChat chatId={note.id} title={note.title || 'Untitled note'} label="Chat" host=".doc-pane" width={chatWidth} onWidth={onChatWidth} onClose={onToggleChat} onOpenNote={onOpenNote}/>}
     <div className="editor-title-row"><div><input aria-label="Note title" className="note-title" placeholder="Untitled note" value={note.title} onChange={e=>onChange({title:e.target.value})}/><div className="note-meta"><Clock3 size={12}/> Updated {new Date(note.updatedAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}<span>·</span>{noteWordCount(note)} words</div></div><button className={`small-button ready-button ${note.ready ? 'is-ready' : ''}`} onClick={()=>onChange({ready:!note.ready})}>{note.ready ? <CheckCircle2 size={15}/> : <Circle size={15}/>} {note.ready ? readyLabels.done : readyLabels.mark}</button></div>
     <DocumentDetails key={note.id} note={note} notes={notes} allTags={allTags} folders={folders} sections={sections} open={detailsOpen} onToggle={onToggleDetails} onTransfer={onTransfer} onSplit={onSplit} onChange={onChange}/>
     {note.section==='experiences' && <ExperienceDetails note={note} notes={notes} onChange={experience=>onChange({experience})}/>}
-    <div className="doc-sticky"><DocTabs note={note} active={tab?.id || ''} onSelect={openTab} onAdd={addTab} onRename={renameTab} onDelete={deleteTab}/>
+    <div className="doc-sticky" ref={measureSticky}><DocTabs note={note} active={tab?.id || ''} onSelect={openTab} onAdd={addTab} onRename={renameTab} onDelete={deleteTab}/>
     <div className="editor-controls"><div className="editor-tabs">{tabs.map(([key,label,Icon])=><button key={key} draggable={!tab} title={tab ? label : `${label}. Drag to an edge to show it beside this document.`} className={mode===key ? 'active' : ''} onClick={()=>setMode(key)} onDragStart={e=>{e.dataTransfer.setData(VIEW_DRAG_TYPE,key);e.dataTransfer.effectAllowed='move';onViewDragStart(key);}} onDragEnd={onViewDragEnd}><Icon size={15}/>{label}{key==='board' && note.scene?.elements?.length ? <span className="tiny-dot"/> : null}</button>)}</div><div className="button-row"><button className={`icon-button outline-toggle ${chatOpen ? 'is-on' : ''}`} title={`${chatOpen ? 'Close' : 'Open'} chat about this doc`} aria-label="Chat about this doc" aria-pressed={chatOpen} onClick={onToggleChat}><MessageCircle size={16}/></button>{mode!=='board' && <button className={`icon-button outline-toggle ${outlineOpen && headings.length ? 'is-on' : ''}`} title={headings.length ? `${outlineOpen ? 'Hide' : 'Show'} table of contents` : 'Add a heading, such as ## Topic, to get a table of contents'} aria-label="Table of contents" aria-pressed={outlineOpen && headings.length>0} disabled={!headings.length} onClick={onToggleOutline}><ListTree size={16}/></button>}{tab?.kind!=='board' && <button className="icon-button" title={`Export as ${noteExtension(doc)}`} aria-label={`Export as ${noteExtension(doc)}`} onClick={()=>download(`${safeFilename(tab ? `${note.title || 'note'} - ${tab.name}` : note.title || 'note')}${noteExtension(doc)}`,noteToMarkdown(doc),noteMimeType(doc))}><Download size={16}/></button>}<button className="icon-button danger" title="Delete note" aria-label="Delete note" onClick={()=>{if(window.confirm('Delete this note and its whiteboard?'))onDelete();}}><Trash2 size={16}/></button></div></div></div>
-    {mode==='board' ? boardTaken ? <div className="empty-state spacious"><PenLine size={28}/><h3>This whiteboard is open in the other window.</h3><p>Draw there, or switch that window to another view to draw here.</p></div> : <Suspense fallback={<div className="empty-state spacious"><LoaderCircle className="spin"/><p>Opening Excalidraw…</p></div>}><Whiteboard key={doc.id} theme={theme} note={doc} onChange={scene=>change({scene})} onAddDrawing={onAddDrawing}/></Suspense> : <div className="note-with-outline"><div className={`note-outline-row is-${mode}`}>{mode==='live' ? <div className="writing-area live"><Suspense fallback={<div className="empty-state spacious"><LoaderCircle className="spin"/><p>Opening the editor…</p></div>}><LiveEditor key={doc.id} body={doc.body} section={doc.section} uploads={uploads} onChange={body=>change({body})}/></Suspense></div> : <div className={`writing-area ${mode}`}>{(mode==='edit' || mode==='split') && <div className="markdown-editor">{doc.format ? <div className="markdown-toolbar"><small>{doc.format==='table' ? 'CSV: one row per line, with commas between cells' : 'Plain text'}</small></div> : <div className="markdown-toolbar"><button aria-label="Bold" title="Bold" onClick={()=>insertMarkdown('**','**')}><Bold size={15}/></button><button aria-label="Italic" title="Italic" onClick={()=>insertMarkdown('*','*')}><Italic size={15}/></button><button aria-label="Heading" title="Heading" onClick={()=>insertMarkdown('\n## ')}>H₂</button><span/><button aria-label="Bullet list" title="Bullet list" onClick={()=>insertMarkdown('\n- ')}><List size={16}/></button><button aria-label="Code block" title="Code block" onClick={()=>insertMarkdown('\n```\n','\n```\n')}><Code2 size={16}/></button><small>Markdown</small></div>}<textarea key={doc.id} ref={editor} aria-label={doc.format ? 'Document text' : 'Markdown editor'} spellCheck={doc.format!=='table'} placeholder={doc.format ? 'Start writing…' : 'Start writing… Markdown is welcome here.'} value={doc.body} onChange={e=>change({body:e.target.value})}/></div>}{doc.format==='table' && mode==='preview' && <TableEditor key={doc.id} body={doc.body} onChange={body=>change({body})}/>}{doc.format!=='table' && (mode==='preview' || mode==='split') && <article className="markdown-preview">{doc.body ? <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={url=>url.startsWith(UPLOAD_URL_PREFIX) ? url : defaultUrlTransform(url)} components={{img:NoteImage,a:props=><a {...props} target="_blank" rel="noreferrer"/>}}>{linkNoteImages(doc.body,doc.section,uploads)}</ReactMarkdown> : <div className="empty-state"><PenLine size={28}/><h3>A fresh page, a fresh thought.</h3><p>Switch to Write to begin your note.</p><button className="small-button" onClick={()=>setMode('edit')}>Start writing</button></div>}</article>}</div>}{outlineOpen && headings.length>0 && <NoteOutline key={doc.id} headings={headings} mode={mode} editor={editor} onWidth={onOutlineWidth}/>}</div></div>}
+    {mode==='board' ? boardTaken ? <div className="empty-state spacious"><PenLine size={28}/><h3>This whiteboard is open in the other window.</h3><p>Draw there, or switch that window to another view to draw here.</p></div> : <Suspense fallback={<div className="empty-state spacious"><LoaderCircle className="spin"/><p>Opening Excalidraw…</p></div>}><Whiteboard key={doc.id} theme={theme} note={doc} onChange={scene=>change({scene})} onAddDrawing={onAddDrawing}/></Suspense> : <div className="note-with-outline"><div className={`note-outline-row is-${mode}`}>{mode==='live' ? <div className="writing-area live"><Suspense fallback={<div className="empty-state spacious"><LoaderCircle className="spin"/><p>Opening the editor…</p></div>}><LiveEditor key={doc.id} body={doc.body} section={doc.section} uploads={uploads} onChange={body=>change({body})} onPictures={onPictures}/></Suspense></div> : <div className={`writing-area ${mode} ${fileOver ? 'is-file-over' : ''}`} {...pictureDrop}>{(mode==='edit' || mode==='split') && <div className="markdown-editor">{doc.format ? <div className="markdown-toolbar"><small>{doc.format==='table' ? 'CSV: one row per line, with commas between cells' : 'Plain text'}</small></div> : <EditorToolbar name="Markdown" onAction={runAction} onLink={addLink} onPictures={files=>void placePictures(files)}/>}<textarea key={doc.id} ref={editor} aria-label={doc.format ? 'Document text' : 'Markdown editor'} onKeyDown={onEditorKeys} spellCheck={doc.format!=='table'} placeholder={doc.format ? 'Start writing…' : 'Start writing… Markdown is welcome here.'} value={doc.body} onChange={e=>change({body:e.target.value})}/></div>}{doc.format==='table' && mode==='preview' && <TableEditor key={doc.id} body={doc.body} onChange={body=>change({body})}/>}{doc.format!=='table' && (mode==='preview' || mode==='split') && <article className="markdown-preview">{doc.body ? <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={url=>url.startsWith(UPLOAD_URL_PREFIX) ? url : defaultUrlTransform(url)} components={{img:NoteImage,a:props=><a {...props} target="_blank" rel="noreferrer"/>}}>{linkNoteImages(doc.body,doc.section,uploads)}</ReactMarkdown> : <div className="empty-state"><PenLine size={28}/><h3>A fresh page, a fresh thought.</h3><p>Switch to Write to begin your note.</p><button className="small-button" onClick={()=>setMode('edit')}>Start writing</button></div>}</article>}</div>}{outlineOpen && headings.length>0 && <NoteOutline key={doc.id} headings={headings} mode={mode} editor={editor} onWidth={onOutlineWidth}/>}</div></div>}
   </>;
 }
 

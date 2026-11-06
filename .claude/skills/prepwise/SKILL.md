@@ -37,6 +37,12 @@ Prepwise is a local interview notebook built with React 19, TypeScript and Vite 
 - A document's first tab is `Note.body` and `Note.scene`, so a document with no other tabs is stored as before. Other tabs are in `Note.tabs`, and `NotePane` shows the open one as a stand-in `Note` so every editor works on it unchanged. Files are `document - tab.ext`, and chat changes carry a `tabId`.
 - `Note.format` is `text` or `table`, and no value means Markdown. A table's `body` is CSV. These save as `.txt` and `.csv` with no frontmatter, so pinned state and tags live only in the workspace data.
 
+## Note editor
+
+- `EditorToolbar` is shared by Live and Write. Write's edits are in `src/markdown-edits.ts` and go through `document.execCommand` so native undo keeps working. Live uses the editor's own commands.
+- A document pane scrolls on its own on desktop, so pinned offsets use `--pane-top` (0 there, the top bar height on phones) plus `--doc-sticky`, the measured height of the tabs.
+- Dropped and pasted pictures go in the section's gallery (`savePictures` in `App.tsx`) and link as `_gallery/name`, or `../_gallery/name` inside a folder. Links match by filename.
+
 ## Doc chat
 
 Chat uses the user's Claude Code login by running `claude -p`. It doesn't use an API key.

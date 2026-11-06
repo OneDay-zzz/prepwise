@@ -49,6 +49,7 @@
   .app-columns .doc-pane>*{flex-shrink:0}
   .app-columns .doc-pane>.whiteboard:not(:fullscreen):not(.fill-window){flex:1 1 0;height:auto;min-height:420px}
   .app-columns .editor-controls{top:0}
+  .app-columns .doc-pane{--pane-top:0px}
   .app-columns .writing-area{min-height:300px}
   .app-columns .markdown-editor textarea{min-height:360px}
   .sidebar{overflow:hidden}

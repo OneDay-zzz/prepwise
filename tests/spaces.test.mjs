@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { createSpace, DEFAULT_SPACE, defaultSections, deleteSection, deleteSpace, initialWorkspace, matchesNote, moveSection, newDocTab, newNote, noteWordCount, saveSection, searchNotes, saveSpace, spaceSections, validateWorkspace, workspaceSections, workspaceSpaces } from '../src/model.ts';
 import { noteExtension, noteToMarkdown } from '../src/note-files.ts';
 import { applyChatChange, chatWorkspace, undoChatChange } from '../src/doc-chat-model.ts';
+import { insertPictures, isPicture, pictureFileName } from '../src/note-images.ts';
+import { cleanLinkUrl, editMarkdown, insertLink } from '../src/markdown-edits.ts';
 import { importedDocument, parseCsv, pasteCells, squareRows, toCsv } from '../src/doc-formats.ts';
 import { documentFolders, uploadPaths, workspaceFiles } from '../server/workspace-files.mjs';
 
@@ -193,4 +195,76 @@ test('chat is sent tab text but not drawings', () => {
   const {workspace,boards}=chatWorkspace({...initialWorkspace(),notes:[note]});
   assert.equal(boards.n,'written');
   assert.equal(workspace.notes[0].tabs[0].scene,undefined);
+});
+
+test('dropped pictures get safe, unique names, and only ones a browser can show', () => {
+  const uploads=[{id:'a',section:'s',name:'Form Check.png'.replace(' ','-'),type:'image/png',size:1,addedAt:''}];
+  assert.equal(pictureFileName('Form Check.PNG','s',uploads),'Form-Check-2.png');
+  assert.equal(pictureFileName('Form Check.PNG','other',uploads),'Form-Check.png');
+  assert.equal(pictureFileName('截图 (1).png','s'),'截图-1.png');
+  assert.equal(pictureFileName('.png','s'),'png');
+  assert.equal(pictureFileName('!!!.jpg','s'),'picture.jpg');
+  assert.ok(isPicture({type:'image/png'}));
+  assert.ok(!isPicture({type:'image/heic'}));
+  assert.ok(!isPicture({type:'application/pdf'}));
+  assert.ok(!isPicture({type:''}));
+});
+
+test('a dropped picture becomes its own paragraph without disturbing the text', () => {
+  const p=[{alt:'a',src:'_gallery/a.png'}];
+  assert.deepEqual(insertPictures('',0,0,p),{body:'![a](_gallery/a.png)\n',caret:21});
+  assert.equal(insertPictures('one two',3,3,p).body,'one\n\n![a](_gallery/a.png)\n\n two');
+  assert.equal(insertPictures('one\n\ntwo',5,5,p).body,'one\n\n![a](_gallery/a.png)\n\ntwo');
+  assert.equal(insertPictures('one\n',4,4,p).body,'one\n\n![a](_gallery/a.png)\n');
+  assert.equal(insertPictures('one replace two',4,11,p).body,'one \n\n![a](_gallery/a.png)\n\n two');
+  assert.equal(insertPictures('x',1,1,[...p,{alt:'b',src:'_gallery/b.png'}]).body,'x\n\n![a](_gallery/a.png)\n\n![b](_gallery/b.png)\n');
+  const placed=insertPictures('one two',3,3,p);
+  assert.equal(placed.body.slice(placed.caret),' two');
+});
+
+test('toolbar edits to Markdown text', () => {
+  const on=(text,action,from=0,to=text.length)=>editMarkdown(text,from,to,action);
+  assert.deepEqual(on('word','bold'),{text:'**word**',start:2,end:6});
+  assert.deepEqual(editMarkdown('**word**',2,6,'bold'),{text:'word',start:0,end:4});
+  assert.equal(on('**word**','bold').text,'word');
+  assert.deepEqual(editMarkdown('',0,0,'italic'),{text:'*italic text*',start:1,end:12});
+  assert.equal(on('word','strike').text,'~~word~~');
+  assert.equal(on('word','code').text,'`word`');
+  assert.equal(editMarkdown('**word**',2,6,'italic').text,'***word***');
+  assert.equal(on('a\nb','bullet').text,'- a\n- b');
+  assert.equal(on('- a\n- b','bullet').text,'a\nb');
+  assert.equal(on('a\n\nb','ordered').text,'1. a\n\n2. b');
+  assert.equal(on('1. a','ordered').text,'a');
+  assert.equal(on('a','task').text,'- [ ] a');
+  assert.equal(on('- [x] a','task').text,'a');
+  assert.equal(on('- [ ] a','bullet').text,'- a');
+  assert.equal(on('- a','ordered').text,'1. a');
+  assert.equal(on('a','quote').text,'> a');
+  assert.equal(on('> a','quote').text,'a');
+  assert.equal(on('a','h2').text,'## a');
+  assert.equal(on('## a','h2').text,'a');
+  assert.equal(on('## a','h1').text,'# a');
+  assert.equal(on('- a','h3').text,'### a');
+  assert.equal(editMarkdown('one\ntwo\nthree',5,5,'bullet').text,'one\n- two\nthree');
+  assert.equal(editMarkdown('one\ntwo',0,4,'quote').text,'> one\ntwo');
+});
+
+test('toolbar blocks sit on their own lines', () => {
+  assert.equal(editMarkdown('a',1,1,'rule').text,'a\n\n---\n');
+  assert.equal(editMarkdown('a\n\nb',3,3,'rule').text,'a\n\n---\n\nb');
+  assert.ok(editMarkdown('',0,0,'table').text.startsWith('| Column 1 | Column 2 |\n| --- | --- |'));
+  const code=editMarkdown('x',0,1,'codeblock');
+  assert.equal(code.text,'```\nx\n```\n');
+  assert.equal(code.text.slice(code.start,code.end),'x');
+});
+
+test('links wrap the selection, and unsafe addresses are refused', () => {
+  assert.deepEqual(insertLink('see docs',4,8,'https://a.com'),{text:'see [docs](https://a.com)',start:5,end:9});
+  assert.equal(insertLink('',0,0,'https://a.com/x y').text,'[link text](<https://a.com/x y>)');
+  assert.equal(cleanLinkUrl('a.com'),'https://a.com');
+  assert.equal(cleanLinkUrl(' mailto:a@b.com '),'mailto:a@b.com');
+  assert.equal(cleanLinkUrl('#top'),'#top');
+  assert.equal(cleanLinkUrl('javascript:alert(1)'),'');
+  assert.equal(cleanLinkUrl('DATA:text/html,x'),'');
+  assert.equal(cleanLinkUrl('  '),'');
 });

@@ -52,3 +52,27 @@ export function linkNoteImages(body: string, section: Section, uploads: Uploaded
       return `![${text.replace(/[[\]]/g, '')}](${UPLOAD_URL_PREFIX}${upload.id})`;
   });
 }
+
+export type SavedPicture = {alt:string; src:string; upload:UploadedFile};
+// Browsers can't display these, so they'd save fine and then show as a broken image.
+export const isPicture = (file: Pick<File,'type'>) => file.type.startsWith('image/') && !/hei[cf]|tiff/i.test(file.type);
+/** A filename that doesn't need escaping in Markdown, and is new to the section. Links match by name, case aside. */
+export function pictureFileName(name: string, section: Section, uploads: UploadedFile[] = []) {
+  const dot=name.lastIndexOf('.');
+  const extension=dot>0 ? name.slice(dot).replace(/[^\p{L}\p{N}.]/gu,'').toLowerCase() : '';
+  const base=(dot>0 ? name.slice(0,dot) : name).trim().replace(/[^\p{L}\p{N}]+/gu,'-').replace(/^-+|-+$/g,'').slice(0,60) || 'picture';
+  const taken=new Set(uploads.filter(u=>u.section===section).map(u=>u.name.normalize('NFC').toLocaleLowerCase()));
+  for(let n=1;;n++) {
+    const candidate=`${base}${n>1 ? `-${n}` : ''}${extension}`;
+    if(!taken.has(candidate.normalize('NFC').toLocaleLowerCase())) return candidate;
+  }
+}
+/** Puts Markdown between two points as its own paragraph. Returns the text, and where the cursor belongs after it. */
+export function insertPictures(body: string, start: number, end: number, pictures: Pick<SavedPicture,'alt'|'src'>[]) {
+  const before=body.slice(0,start),after=body.slice(end);
+  const links=pictures.map(p=>`![${p.alt}](${p.src})`).join('\n\n');
+  const lead=!before.trim() ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+  const trail=!after.trim() ? (after ? '' : '\n') : after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n';
+  const head=before+lead+links+trail;
+  return {body:head+after,caret:head.length};
+}
