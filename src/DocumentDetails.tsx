@@ -22,7 +22,7 @@ export function DocumentDetails({note,onChange,allTags,folders,sections,notes,on
   const [draft,setDraft]=useState('');
   const [transferring,setTransferring]=useState(false);
   const [splitting,setSplitting]=useState(false);
-  const canSplit=useMemo(()=>open && splitLevels(note.body).length>0,[open,note.body]);
+  const canSplit=useMemo(()=>open && !note.format && splitLevels(note.body).length>0,[open,note.format,note.body]);
   const sectionFolders=foldersIn(folders,note.section);
   const submit=()=>{if(!draft.trim())return;const tags=addTag(note.tags || [],draft);if(tags!==note.tags)onChange({tags});setDraft('');};
   return <div className="document-details">

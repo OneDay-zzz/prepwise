@@ -186,7 +186,7 @@ test('layout settings fall back safely and keep the windows in range', async () 
   assert.deepEqual(normalizeLayout(null), defaultLayout);
   assert.deepEqual(normalizeLayout({docs:'grid',ratio:'wide',second:{id:7,mode:'zoom'}}), defaultLayout);
   const saved = normalizeLayout({sidebarCollapsed:true,listCollapsed:true,docs:'rows',ratio:.9,second:{id:'n1',mode:'board'}});
-  assert.deepEqual(saved, {sidebarCollapsed:true,listCollapsed:true,detailsOpen:false,outlineOpen:true,outlineWidth:null,chatOpen:{first:false,second:false,workspace:false},chatWidth:null,docs:'rows',ratio:.75,sidebarWidth:null,listWidth:null,second:{id:'n1',mode:'board'},noteSort:defaultLayout.noteSort,noteViews:{},lastView:'preview'});
+  assert.deepEqual(saved, {space:'default',sidebarCollapsed:true,listCollapsed:true,detailsOpen:false,outlineOpen:true,outlineWidth:null,chatOpen:{first:false,second:false,workspace:false},chatWidth:null,docs:'rows',ratio:.75,sidebarWidth:null,listWidth:null,second:{id:'n1',mode:'board'},noteSort:defaultLayout.noteSort,noteViews:{},lastView:'preview'});
   assert.deepEqual(normalizeLayout({noteSort:{key:'colour',direction:'asc'}}).noteSort,defaultLayout.noteSort);
   assert.deepEqual(normalizeLayout({noteSort:{key:'title',direction:'asc'}}).noteSort,{key:'title',direction:'asc'});
   assert.equal(clampRatio(.1), .25);

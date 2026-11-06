@@ -1,4 +1,4 @@
-import { noteToMarkdown, readNoteMarkdown } from './note-files.ts';
+import { noteExtension, noteToMarkdown, readNoteMarkdown } from './note-files.ts';
 import { newNote, type Note, type Section, type SectionConfig } from './model.ts';
 
 // Structural types keep this API optional on browsers that do not implement it.
@@ -68,10 +68,10 @@ export async function saveLocalNote(note: Note, folder: LocalDirectory, binding?
   const result: FileBinding = binding ? {...binding} : {folder};
   const parent=binding?.markdown?.entry.parent || binding?.drawing?.entry.parent || folder;
   const sourcePath=binding?.markdown?.entry.path || binding?.drawing?.entry.path;
-  const base=sourcePath ? sourcePath.replace(/\.(md|excalidraw)$/i,'') : safeFilename(note.title);
+  const base=sourcePath ? sourcePath.replace(/\.(md|txt|csv|excalidraw)$/i,'') : safeFilename(note.title);
   const basename=base.split('/').at(-1)!;
   const changes: {key:'markdown'|'drawing'; text:string; name:string; path:string; existing?: FileBinding['markdown']}[] = [];
-  if(binding?.markdown || note.body || !binding?.drawing) changes.push({key:'markdown',text:noteToMarkdown(note),name:basename+'.md',path:base+'.md',existing:binding?.markdown});
+  if(binding?.markdown || note.body || !binding?.drawing) changes.push({key:'markdown',text:noteToMarkdown(note),name:basename+noteExtension(note),path:base+noteExtension(note),existing:binding?.markdown});
   if(note.scene) changes.push({key:'drawing',text:drawingText(note),name:basename+'.excalidraw',path:base+'.excalidraw',existing:binding?.drawing});
   // Preflight every target before writing any file. Never silently overwrite external edits.
   for(const change of changes) {

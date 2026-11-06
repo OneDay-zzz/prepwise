@@ -29,6 +29,14 @@ Prepwise is a local interview notebook built with React 19, TypeScript and Vite 
 - `server/checkpoint-plugin.mjs` is the Vite server plugin. Its routes pass `isLocalRequest`, which needs a matching Origin, the header `X-Prepwise-Checkpoint: 1`, and a JSON content type.
 - `server/workspace-files.mjs` writes docs to `documents/`. These files are generated. Editing one directly doesn't change the app, and the next checkpoint replaces it.
 
+## Workspaces and formats
+
+- A workspace is a label, not a separate store: `Workspace.spaces`, `SectionConfig.space`, and `Plan.space`. No value means the original workspace (`DEFAULT_SPACE`). All of it saves, backs up, and checkpoints as one object, so the combined calendar needs no extra loading.
+- **Keep old data valid.** Add new fields as optional, because existing saves and backups must pass `validateWorkspace` unchanged.
+- **Keep original paths stable.** The original workspace's sections stay at the top of `documents/`, and every other workspace is one folder (`sectionDirectories` in `server/workspace-files.mjs`).
+- A document's first tab is `Note.body` and `Note.scene`, so a document with no other tabs is stored as before. Other tabs are in `Note.tabs`, and `NotePane` shows the open one as a stand-in `Note` so every editor works on it unchanged. Files are `document - tab.ext`, and chat changes carry a `tabId`.
+- `Note.format` is `text` or `table`, and no value means Markdown. A table's `body` is CSV. These save as `.txt` and `.csv` with no frontmatter, so pinned state and tags live only in the workspace data.
+
 ## Doc chat
 
 Chat uses the user's Claude Code login by running `claude -p`. It doesn't use an API key.

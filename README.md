@@ -20,6 +20,10 @@ npm run build # TypeScript checking and production build
 
 ## Features
 
+- **Workspaces**: keep separate areas of your life apart, such as interviews, working out, travel, and work. Use the switcher at the top of the sidebar to change workspace or create one, from a starter or blank. Each has its own sections, documents, and overview. Your original workspace can be renamed but not deleted.
+- **One calendar**: the Calendar shows plans from every workspace together, with a colored dot for each, and buttons to show just one. The Planner starts with the workspace you're in. Search all and chat cover every workspace.
+- **Tabs in a document**: use the **+** above a document to add a tab, and choose a note, plain text, a table, or a whiteboard. Each tab has its own content. Double-click a tab to rename it, and use its **×** to delete it. Search and chat include every tab, and each saves as its own file beside the document, such as `Weekly plan - Lifts.csv`.
+- **Document formats**: **New** in a section's document list lets you choose a Markdown note, plain text, a table, or a whiteboard, or import `.md`, `.txt`, `.log`, `.json`, `.csv`, and `.tsv` files. Tables edit like a spreadsheet, and you can paste cells from one. They're saved as `.csv` and text as `.txt`, and chat can edit both. Other files, such as `.docx` or `.xlsx`, go in a section's Gallery.
 - Resume upload (PDF, DOC/DOCX, TXT, Markdown; maximum 10 MB), download, and PDF preview. Uploads do not automatically parse or summarize a resume.
 - Resume, behavioral, project deep-dive, LeetCode, company experience, and freeform reflection collections with guided templates.
 - Company experiences include company, role/level, round, date, and source link, with a company filter.
@@ -47,7 +51,7 @@ npm run build # TypeScript checking and production build
 - Moving, copying, splitting, or deleting a document offers **Undo** for a few seconds.
 - Markdown editing, formatting controls, preview, split view, search within collections, and Markdown export.
 - A real embedded Excalidraw editor for every note, including scene images stored with the drawing. Use the button at the top right of the board to expand it to full screen. **Add to doc**, beside it, saves a picture of the selected shapes, or the whole board if nothing is selected, as an SVG in the section's gallery and links it at the end of the document. The picture is a snapshot, so it doesn't change when you edit the board afterwards.
-- Prep tasks and interview scheduling with company, round, date, local time, duration, details, and linked notes.
+- Tasks, events, and interview scheduling with company, round, date, local time, duration, details, and linked notes.
 - **Milestones**: use **Add milestone** on the Calendar or Planner to set what you should finish by a date, with an optional time, details, and a linked note. Each one is flagged on the calendar, shows the days left or overdue, and stays in **Coming up next** until you tick it off. An overdue milestone turns red.
 - Monthly calendar, completion tracking, and `.ics` export for saved plans.
 - Automatic browser persistence using IndexedDB and complete JSON backup export/import.

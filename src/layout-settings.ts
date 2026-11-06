@@ -9,6 +9,7 @@ export type LayoutSettings = {
   outlineOpen: boolean;
   outlineWidth: number | null;
   /** Whether each window has its chat open, and the chat for the whole workspace. */
+  space: string;
   chatOpen: {first: boolean; second: boolean; workspace: boolean};
   chatWidth: number | null;
   docs: DocLayout;
@@ -23,7 +24,7 @@ export type LayoutSettings = {
   noteViews: Record<string, NoteMode>;
   lastView: NoteMode;
 };
-export const defaultLayout: LayoutSettings = {sidebarCollapsed:false,listCollapsed:false,detailsOpen:false,outlineOpen:true,outlineWidth:null,chatOpen:{first:false,second:false,workspace:false},chatWidth:null,docs:'one',ratio:.5,sidebarWidth:null,listWidth:null,second:{id:'',mode:'preview'},noteSort:defaultNoteSort,noteViews:{},lastView:'preview'};
+export const defaultLayout: LayoutSettings = {space:'default',sidebarCollapsed:false,listCollapsed:false,detailsOpen:false,outlineOpen:true,outlineWidth:null,chatOpen:{first:false,second:false,workspace:false},chatWidth:null,docs:'one',ratio:.5,sidebarWidth:null,listWidth:null,second:{id:'',mode:'preview'},noteSort:defaultNoteSort,noteViews:{},lastView:'preview'};
 
 export function clampRatio(value: number) {return Math.min(.75,Math.max(.25,value));}
 
@@ -49,6 +50,7 @@ export function normalizeLayout(value: unknown): LayoutSettings {
     detailsOpen:v.detailsOpen===true,
     outlineOpen:v.outlineOpen!==false,
     outlineWidth:savedColumn(v.outlineWidth,columnLimits.outline),
+    space:typeof v.space==='string' && v.space ? v.space : 'default',
     chatOpen:{first:chat.first===true,second:chat.second===true,workspace:chat.workspace===true},
     chatWidth:savedColumn(v.chatWidth,columnLimits.chat),
     docs:v.docs==='columns' || v.docs==='rows' ? v.docs : 'one',

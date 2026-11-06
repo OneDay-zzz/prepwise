@@ -1,12 +1,12 @@
-import { workspaceSections } from '../src/model.ts';
-import { noteToMarkdown } from '../src/note-files.ts';
+import { DEFAULT_SPACE, sectionSpace, workspaceSections, workspaceSpaces } from '../src/model.ts';
+import { noteExtension, noteToMarkdown, tabExtension } from '../src/note-files.ts';
 import { drawingText, safeFilename } from '../src/local-files.ts';
 
 // Everything under this folder is generated and is replaced on each checkpoint.
 export const DOCUMENTS_DIR = 'documents';
 
 // A folder ending in ".md" could otherwise clash with a note file of the same name.
-const directoryName = name => safeFilename(name).replace(/\.(md|excalidraw)$/i, '-$1');
+const directoryName = name => safeFilename(name).replace(/\.(md|txt|csv|excalidraw)$/i, '-$1');
 
 // Names are compared without case because macOS and Windows clones are case-insensitive.
 // Only colliding items get an id suffix, and it never depends on their order, so paths stay stable.
@@ -22,11 +22,27 @@ function uniqueNames(items, clean, rename = (name, tag) => `${name}-${tag}`) {
     }));
 }
 
+/**
+ * The original workspace's sections stay at the top level, so their paths never change.
+ * Each other workspace is one folder holding its sections.
+ */
+function sectionDirectories(workspace) {
+    const sections = workspaceSections(workspace);
+    const others = workspaceSpaces(workspace).filter(space => space.id !== DEFAULT_SPACE);
+    const top = uniqueNames([...sections.filter(s => sectionSpace(s) === DEFAULT_SPACE), ...others], directoryName);
+    const dirs = new Map(sections.filter(s => sectionSpace(s) === DEFAULT_SPACE).map(s => [s.id, top.get(s.id)]));
+    for (const space of others) {
+        const inside = sections.filter(s => sectionSpace(s) === space.id);
+        const names = uniqueNames(inside, directoryName);
+        for (const section of inside) dirs.set(section.id, `${top.get(space.id)}/${names.get(section.id)}`);
+    }
+    return dirs;
+}
 const beforeExtension = (name, tag) => name.replace(/(\.[^.]*)?$/, `-${tag}$1`);
 // Gallery files sit in their section's folder, so a checkpoint and a restore agree on each path.
 export function uploadPaths(workspace) {
     const sections = workspaceSections(workspace);
-    const sectionDirs = uniqueNames(sections, directoryName);
+    const sectionDirs = sectionDirectories(workspace);
     const paths = new Map();
     for (const section of sections) {
         const uploads = (workspace.uploads || []).filter(u => u.section === section.id);
@@ -40,7 +56,7 @@ export function uploadPaths(workspace) {
 export function documentFolders(workspace) {
     const places = new Map();
     const sections = workspaceSections(workspace);
-    const sectionDirs = uniqueNames(sections, directoryName);
+    const sectionDirs = sectionDirectories(workspace);
     for (const section of sections) {
         places.set(sectionDirs.get(section.id), { section: section.id });
         const folders = (workspace.folders || []).filter(f => f.section === section.id);
@@ -52,9 +68,9 @@ export function documentFolders(workspace) {
 }
 export function workspaceFiles(workspace, uploads = new Map()) {
     const files = [];
-    const add = (path, bytes, noteId) => files.push({ path: `${DOCUMENTS_DIR}/${path}`, bytes, ...(noteId ? { noteId } : {}) });
+    const add = (path, bytes, noteId, tabId) => files.push({ path: `${DOCUMENTS_DIR}/${path}`, bytes, ...(noteId ? { noteId } : {}), ...(tabId ? { tabId } : {}) });
     const sections = workspaceSections(workspace);
-    const sectionDirs = uniqueNames(sections, directoryName);
+    const sectionDirs = sectionDirectories(workspace);
     for (const section of sections) {
         const folders = (workspace.folders || []).filter(f => f.section === section.id);
         const folderDirs = uniqueNames(folders, directoryName);
@@ -65,12 +81,21 @@ export function workspaceFiles(workspace, uploads = new Map()) {
         }
         for (const [dir, notes] of groups) {
             const stems = uniqueNames(notes.map(n => ({ id: n.id, name: n.title || 'Untitled note' })), safeFilename);
+            const usedStems = new Set([...stems.values()].map(stem => stem.toLocaleLowerCase()));
             for (const note of notes) {
                 const stem = `${dir}/${stems.get(note.id)}`;
                 const hasDrawing = !!note.scene?.elements?.length;
                 const markdown = noteToMarkdown(note);
-                if (markdown || !hasDrawing) add(`${stem}.md`, Buffer.from(markdown), note.id);
+                if (markdown || !hasDrawing) add(`${stem}${noteExtension(note)}`, Buffer.from(markdown), note.id);
                 if (hasDrawing) add(`${stem}.excalidraw`, Buffer.from(drawingText(note)));
+                // A document's other tabs sit beside it as files of their own type.
+                for (const tab of note.tabs || []) {
+                    let name = `${stems.get(note.id)} - ${safeFilename(tab.name)}`;
+                    if (usedStems.has(name.toLocaleLowerCase())) name = `${name}-${tab.id.slice(-8)}`;
+                    usedStems.add(name.toLocaleLowerCase());
+                    if (tab.kind !== 'board') add(`${dir}/${name}${tabExtension(tab)}`, Buffer.from(tab.body), note.id, tab.id);
+                    else if (tab.scene?.elements?.length) add(`${dir}/${name}.excalidraw`, Buffer.from(drawingText({ ...note, scene: tab.scene })));
+                }
             }
         }
     }

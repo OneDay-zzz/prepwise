@@ -1,14 +1,21 @@
+import { STARTER_TABLE } from './doc-formats.ts';
+
 export type Section = string;
 export type Experience = { company: string; role: string; round: string; date: string; sourceUrl: string };
 export type DocumentFolder = {id:string; section:Section; name:string; order?:number};
-export type Note = { order?: number; folderId?: string; pinned?: boolean; marked?: boolean; tags?: string[]; importance?: number; experience?: Experience; id: string; section: Section; title: string; body: string; updatedAt: string; ready: boolean; scene?: { elements: readonly any[]; appState: Record<string, any>; files: Record<string, any> } };
+export type NoteFormat = 'text' | 'table';
+export type DocTabKind = 'note' | 'text' | 'table' | 'board';
+export type DocTab = { id: string; name: string; kind: DocTabKind; body: string; scene?: Note['scene'] };
+// A document's first tab is its body and scene, so a document with no other tabs is stored exactly as before.
+export type Note = { tabs?: DocTab[]; tabName?: string; format?: NoteFormat; order?: number; folderId?: string; pinned?: boolean; marked?: boolean; tags?: string[]; importance?: number; experience?: Experience; id: string; section: Section; title: string; body: string; updatedAt: string; ready: boolean; scene?: { elements: readonly any[]; appState: Record<string, any>; files: Record<string, any> } };
 export type Resume = { name: string; data: string; type: string; size: number };
-export type Plan = { id: string; kind: 'task' | 'interview' | 'milestone'; title: string; date: string; time: string; duration: number; company: string; round: string; notes: string; noteId: string; done: boolean };
+export type Plan = { space?: string; id: string; kind: 'task' | 'interview' | 'milestone' | 'event'; title: string; date: string; time: string; duration: number; company: string; round: string; notes: string; noteId: string; done: boolean };
 export type UploadedFile = { id: string; section: Section; name: string; type: string; size: number; addedAt: string };
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-export type SectionConfig = { id: Section; name: string; short: string; description: string; color: string; icon: string; hidden?: boolean; template?: string };
+export type SectionConfig = { space?: string; id: Section; name: string; short: string; description: string; color: string; icon: string; hidden?: boolean; template?: string };
 // `sections` is only stored once customized, so older workspaces and backups stay valid.
-export type Workspace = { version: 1; uploads?: UploadedFile[]; sections?: SectionConfig[]; removedSections?: Section[]; folders?: DocumentFolder[]; notes: Note[]; plans: Plan[]; resume?: Resume };
+export type SpaceConfig = { id: string; name: string; color: string; icon: string };
+export type Workspace = { version: 1; spaces?: SpaceConfig[]; uploads?: UploadedFile[]; sections?: SectionConfig[]; removedSections?: Section[]; folders?: DocumentFolder[]; notes: Note[]; plans: Plan[]; resume?: Resume };
 export const sectionColors = ['purple','orange','blue','rose','amber','green'];
 export const defaultSections: SectionConfig[] = [
   { id: 'resume', name: 'Resume', short: 'Your first impression', description: 'Refine your experience and tell a clear story.', color: 'purple', icon: 'file-text' },
@@ -85,6 +92,58 @@ export function copyNoteToSection(workspace:Workspace,id:string,section:Section,
 }
 export const isPdfFile = (file: Pick<UploadedFile,'name'|'type'>) => file.type==='application/pdf' || ((!file.type || file.type==='application/octet-stream') && /\.pdf$/i.test(file.name));
 export const formatFileSize = (bytes: number) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+export function saveSpace(workspace:Workspace, space:SpaceConfig): Workspace {
+  const name=space.name.trim();
+  if(!name) throw new Error('Give your workspace a name.');
+  const current=workspaceSpaces(workspace);
+  if(current.some(s=>s.id!==space.id && s.name.toLocaleLowerCase()===name.toLocaleLowerCase())) throw new Error('Another workspace already has that name.');
+  const next={...space,name};
+  return {...workspace,spaces:current.some(s=>s.id===space.id) ? current.map(s=>s.id===space.id ? next : s) : [...current,next]};
+}
+type StarterSection = {name:string; short:string; description:string; icon:string; color:string; template:string; first?:{title:string; format?:NoteFormat; body:string}};
+const blankTemplate='# New note\n\n## Summary\n\nWhat is this note about?\n\n## Details\n\nAdd the specifics worth remembering.\n';
+export const spaceStarters: {id:string; name:string; icon:string; color:string; sections:StarterSection[]}[] = [
+  {id:'blank',name:'Blank',icon:'book',color:'blue',sections:[{name:'Notes',short:'Anything worth keeping',description:'Start here, and add more sections as you need them.',icon:'book',color:'blue',template:blankTemplate}]},
+  {id:'fitness',name:'Working out',icon:'dumbbell',color:'green',sections:[
+    {name:'Training plan',short:'What to lift and when',description:'Your weekly split, programs, and exercise notes.',icon:'dumbbell',color:'green',template:'# Workout\n\n## Focus\n\nWhat is this session for?\n\n## Exercises\n\n| Exercise | Sets | Reps | Weight |\n| --- | --- | --- | --- |\n|  |  |  |  |\n\n## Notes\n\nHow did it feel?\n',first:{title:'Weekly split',format:'table',body:'Day,Focus,Exercises,Notes\nMonday,,,\nTuesday,,,\nWednesday,,,\nThursday,,,\nFriday,,,\nSaturday,,,\nSunday,,,\n'}},
+    {name:'Diet',short:'What you eat',description:'Meal plans, recipes, and nutrition targets.',icon:'utensils',color:'orange',template:'# Meal plan\n\n## Targets\n\nCalories and protein for the day.\n\n## Meals\n\n- Breakfast:\n- Lunch:\n- Dinner:\n- Snacks:\n'},
+    {name:'Progress',short:'How it’s going',description:'Body weight, lifts, and photos over time.',icon:'trophy',color:'amber',template:'# Check-in\n\n## This week\n\nWhat went well, and what to change?\n',first:{title:'Log',format:'table',body:'Date,Body weight,Notes\n,,\n'}},
+  ]},
+  {id:'travel',name:'Travel',icon:'plane',color:'blue',sections:[
+    {name:'Trips',short:'Where you’re going',description:'Itineraries, bookings, and plans for each trip.',icon:'plane',color:'blue',template:'# Trip\n\n## Dates\n\n## Bookings\n\n## Day by day\n\n### Day 1\n'},
+    {name:'Ideas',short:'Places to see someday',description:'Destinations, restaurants, and things to try.',icon:'compass',color:'rose',template:'# Place\n\n## Why go\n\n## What to see\n'},
+    {name:'Checklists',short:'Nothing left behind',description:'Packing lists and things to do before you leave.',icon:'checklist',color:'green',template:'# Checklist\n\n- [ ] Passport\n- [ ] Chargers\n',first:{title:'Packing list',format:'table',body:'Item,Packed,Notes\n,,\n'}},
+  ]},
+  {id:'work',name:'Work',icon:'briefcase',color:'orange',sections:[
+    {name:'Projects',short:'What you’re building',description:'Plans, decisions, and status for each project.',icon:'folder-kanban',color:'orange',template:'# Project\n\n## Goal\n\n## Status\n\n## Decisions\n\n## Next steps\n\n- [ ] \n'},
+    {name:'Meetings',short:'What was said',description:'Agendas, notes, and follow-ups.',icon:'users',color:'blue',template:'# Meeting\n\n## Agenda\n\n## Notes\n\n## Follow-ups\n\n- [ ] \n'},
+    {name:'Reference',short:'Worth finding again',description:'How-tos, contacts, and anything you look up often.',icon:'book',color:'purple',template:blankTemplate},
+  ]},
+];
+/** Adds a workspace with a starter's sections. Returns its id, so the app can open it. */
+export function createSpace(workspace:Workspace, name:string, color:string, starterId:string, now=new Date().toISOString()):{workspace:Workspace; id:string; section:Section} {
+  const starter=spaceStarters.find(s=>s.id===starterId) || spaceStarters[0];
+  const id=`space-${crypto.randomUUID()}`;
+  const withSpace=saveSpace(workspace,{id,name,color,icon:starter.icon});
+  const added=starter.sections.map(s=>({section:{id:`section-${crypto.randomUUID()}`,space:id,name:s.name,short:s.short,description:s.description,icon:s.icon,color:s.color,template:s.template} as SectionConfig,first:s.first}));
+  const notes:Note[]=added.flatMap(({section,first})=>first ? [{id:crypto.randomUUID(),section:section.id,title:first.title,body:first.body,updatedAt:now,ready:false,...(first.format ? {format:first.format} : {})}] : []);
+  return {id,section:added[0].section.id,workspace:{...withSpace,sections:[...workspaceSections(workspace),...added.map(a=>a.section)],notes:[...notes,...workspace.notes]}};
+}
+/** Removes a workspace and everything in it. The original can't be removed, since older data belongs to it. */
+export function deleteSpace(workspace:Workspace, id:string): Workspace {
+  if(id===DEFAULT_SPACE) throw new Error('This workspace can be renamed, but not deleted.');
+  const sections=workspaceSections(workspace);
+  const gone=new Set(sections.filter(s=>sectionSpace(s)===id).map(s=>s.id));
+  const removedNotes=new Set(workspace.notes.filter(n=>gone.has(n.section)).map(n=>n.id));
+  return {...workspace,
+    spaces:workspaceSpaces(workspace).filter(s=>s.id!==id),
+    sections:sections.filter(s=>!gone.has(s.id)),
+    folders:workspace.folders?.filter(f=>!gone.has(f.section)),
+    uploads:workspace.uploads?.filter(u=>!gone.has(u.section)),
+    notes:workspace.notes.filter(n=>!removedNotes.has(n.id)),
+    plans:workspace.plans.filter(p=>planSpace(p)!==id).map(p=>removedNotes.has(p.noteId) ? {...p,noteId:''} : p),
+  };
+}
 export function newNote(section: Section, template = true, config?: SectionConfig): Note {
   const content = template ? sectionTemplate(section,config) : {title:'Untitled note',body:''};
   return { id: crypto.randomUUID(), section, title: content.title, body: content.body, updatedAt: new Date().toISOString(), ready: false };
@@ -107,13 +166,31 @@ export function workspaceSections(workspace: Pick<Workspace,'sections'|'removedS
   const saved=workspace.sections || [];
   return [...saved,...defaultSections.filter(d=>!saved.some(s=>s.id===d.id) && !workspace.removedSections?.includes(d.id))];
 }
+// Everything made before workspaces existed has no space set, and belongs to this one.
+export const DEFAULT_SPACE = 'default';
+export const defaultSpace: SpaceConfig = {id:DEFAULT_SPACE,name:'Interview',color:'purple',icon:'briefcase'};
+export const sectionSpace = (section: Pick<SectionConfig,'space'>) => section.space || DEFAULT_SPACE;
+export const planSpace = (plan: Pick<Plan,'space'>) => plan.space || DEFAULT_SPACE;
+export function workspaceSpaces(workspace: Pick<Workspace,'spaces'>): SpaceConfig[] {
+  const saved=workspace.spaces || [];
+  return saved.some(s=>s.id===DEFAULT_SPACE) ? saved : [defaultSpace,...saved];
+}
+export function spaceSections(workspace: Pick<Workspace,'sections'|'removedSections'>, space: string) { return workspaceSections(workspace).filter(s=>sectionSpace(s)===space); }
 export function validateWorkspace(value: unknown): Workspace {
   const w = value as Workspace;
   if (!w || w.version !== 1 || !Array.isArray(w.notes) || !Array.isArray(w.plans)) throw new Error('This is not a Prepwise backup.');
   if(w.sections !== undefined && !Array.isArray(w.sections)) throw new Error('The backup contains invalid sections.');
+  if(w.spaces !== undefined && !Array.isArray(w.spaces)) throw new Error('The backup contains invalid workspaces.');
+  const spaceIds=new Set<string>([DEFAULT_SPACE]);
+  const seenSpaces=new Set<string>();
+  for(const s of w.spaces || []) {
+    if(!s || typeof s.id!=='string' || !s.id || seenSpaces.has(s.id) || typeof s.name!=='string' || !s.name.trim() || !sectionColors.includes(s.color) || typeof s.icon!=='string') throw new Error('The backup contains invalid workspaces.');
+    seenSpaces.add(s.id);spaceIds.add(s.id);
+  }
   const seenSections=new Set<string>();
   for(const s of w.sections || []) {
     if(!s || typeof s.id!=='string' || !s.id || seenSections.has(s.id) || reservedRoutes.includes(s.id) || !['name','short','description','icon'].every(key=>typeof s[key as keyof SectionConfig]==='string') || !s.name.trim() || !sectionColors.includes(s.color) || (s.hidden!==undefined && typeof s.hidden!=='boolean') || (s.template!==undefined && typeof s.template!=='string')) throw new Error('The backup contains invalid sections.');
+    if(s.space!==undefined && !spaceIds.has(s.space)) throw new Error('A section points to a workspace that doesn’t exist.');
     seenSections.add(s.id);
   }
   if(w.removedSections !== undefined && (!Array.isArray(w.removedSections) || w.removedSections.some(id=>typeof id!=='string'))) throw new Error('The backup contains invalid sections.');
@@ -131,13 +208,24 @@ export function validateWorkspace(value: unknown): Workspace {
     if (n.pinned !== undefined && typeof n.pinned !== 'boolean' || n.marked !== undefined && typeof n.marked !== 'boolean' || n.tags !== undefined && (!Array.isArray(n.tags) || n.tags.some(t => typeof t !== 'string'))) throw new Error('The backup contains invalid document labels.');
     if (n.importance !== undefined && (!Number.isInteger(n.importance) || (n.importance as number) < 1 || (n.importance as number) > 5)) throw new Error('The backup contains an invalid importance level.');
     if (n.experience !== undefined && (!n.experience || typeof n.experience !== 'object' || !['company','role','round','date','sourceUrl'].every(key => typeof n.experience![key as keyof Experience] === 'string'))) throw new Error('The backup contains invalid company details.');
+    if(n.tabName !== undefined && (typeof n.tabName!=='string' || !n.tabName.trim())) throw new Error('The backup contains an invalid document tab.');
+    if(n.tabs !== undefined) {
+      if(!Array.isArray(n.tabs)) throw new Error('The backup contains an invalid document tab.');
+      const tabIds=new Set<string>();
+      for(const tab of n.tabs) {
+        if(!tab || typeof tab.id!=='string' || !tab.id || tabIds.has(tab.id) || typeof tab.name!=='string' || !tab.name.trim() || !['note','text','table','board'].includes(tab.kind) || typeof tab.body!=='string') throw new Error('The backup contains an invalid document tab.');
+        if(tab.scene && (!Array.isArray(tab.scene.elements) || !tab.scene.appState || !tab.scene.files)) throw new Error('The backup contains an invalid whiteboard.');
+        tabIds.add(tab.id);
+      }
+    }
+    if(n.format !== undefined && n.format!=='text' && n.format!=='table') throw new Error('The backup contains an unknown document format.');
     if(n.order !== undefined && !Number.isFinite(n.order)) throw new Error('The backup contains an invalid note.');
     if(n.folderId !== undefined && (typeof n.folderId!=='string' || !(w.folders || []).some(f=>f.id===n.folderId && f.section===n.section))) throw new Error('A note points to an invalid folder.');
     ids.add(n.id);
   }
   const planIds = new Set<string>();
   for (const p of w.plans) {
-    if (!p || typeof p.id !== 'string' || planIds.has(p.id) || !['task', 'interview', 'milestone'].includes(p.kind) || !['title','date','time','company','round','notes','noteId'].every(key => typeof p[key as keyof Plan] === 'string') || !/^\d{4}-\d{2}-\d{2}$/.test(p.date) || localDate(new Date(`${p.date}T12:00:00`)) !== p.date || (p.time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(p.time)) || !Number.isFinite(p.duration) || p.duration <= 0 || typeof p.done !== 'boolean') throw new Error('The backup contains an invalid plan.');
+    if (!p || typeof p.id !== 'string' || planIds.has(p.id) || !['task', 'interview', 'milestone', 'event'].includes(p.kind) || (p.space!==undefined && !spaceIds.has(p.space)) || !['title','date','time','company','round','notes','noteId'].every(key => typeof p[key as keyof Plan] === 'string') || !/^\d{4}-\d{2}-\d{2}$/.test(p.date) || localDate(new Date(`${p.date}T12:00:00`)) !== p.date || (p.time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(p.time)) || !Number.isFinite(p.duration) || p.duration <= 0 || typeof p.done !== 'boolean') throw new Error('The backup contains an invalid plan.');
     planIds.add(p.id);
   }
   if(w.uploads !== undefined && !Array.isArray(w.uploads)) throw new Error('The backup contains invalid uploaded files.');
@@ -167,7 +255,18 @@ export type NoteSortKey = typeof noteSortKeys[number];
 export type NoteSortDirection = 'asc' | 'desc';
 export type NoteSort = {key: NoteSortKey; direction: NoteSortDirection};
 export const defaultNoteSort: NoteSort = {key:'updated',direction:'desc'};
-export function noteWordCount(note: Note) { return note.body.trim() ? note.body.trim().split(/\s+/).length : 0; }
+export function noteWordCount(note: Note) {
+  const count=(text:string)=>text.trim() ? text.trim().split(/\s+/).length : 0;
+  return (note.tabs || []).reduce((total,tab)=>total+count(tab.body),count(note.body));
+}
+const tabNames:Record<DocTabKind,string>={note:'Note',text:'Text',table:'Table',board:'Whiteboard'};
+export const mainTabName=(note:Pick<Note,'tabName'|'format'>)=>note.tabName || tabNames[note.format || 'note'];
+export function newDocTab(note:Note, kind:DocTabKind):DocTab {
+  const taken=new Set([mainTabName(note),...(note.tabs || []).map(tab=>tab.name)].map(name=>name.toLocaleLowerCase()));
+  let name=tabNames[kind];
+  for(let n=2;taken.has(name.toLocaleLowerCase());n++) name=`${tabNames[kind]} ${n}`;
+  return {id:crypto.randomUUID(),name,kind,body:kind==='table' ? STARTER_TABLE : ''};
+}
 /** Each criterion's value, or undefined for a note without one. Those notes stay last in either direction. */
 function compareBy(key: NoteSortKey, a: Note, b: Note): number | undefined {
   switch(key) {
@@ -235,7 +334,7 @@ export function searchNotes(notes: Note[], query: string) {
   return [...recent.filter(inTitle),...recent.filter(n=>!inTitle(n) && matchesNote(n,term))];
 }
 export function matchesNote(note: Note, query: string) {
-  return [note.title,note.body,...(note.tags || []),...Object.values(note.experience || {})].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  return [note.title,note.body,...(note.tabs || []).flatMap(tab=>[tab.name,tab.body]),...(note.tags || []),...Object.values(note.experience || {})].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
 }
 export function addTag(tags: string[], value: string): string[] {
   const next=value.trim().replace(/^#+/,'').trim().slice(0,40);
@@ -261,7 +360,7 @@ export function saveSection(workspace:Workspace, section:SectionConfig): Workspa
   const name=section.name.trim();
   if(!name) throw new Error('Give your section a title.');
   const current=workspaceSections(workspace);
-  if(current.some(s=>s.id!==section.id && s.name.toLocaleLowerCase()===name.toLocaleLowerCase())) throw new Error('Another section already has that title.');
+  if(current.some(s=>s.id!==section.id && sectionSpace(s)===sectionSpace(section) && s.name.toLocaleLowerCase()===name.toLocaleLowerCase())) throw new Error('Another section in this workspace already has that title.');
   const next: SectionConfig={...section,name,short:section.short.trim(),description:section.description.trim()};
   // An untouched built-in template stays unset, which also keeps its original note title.
   if(next.template===templates[next.id]?.body) delete next.template;
@@ -269,8 +368,12 @@ export function saveSection(workspace:Workspace, section:SectionConfig): Workspa
 }
 export function moveSection(workspace:Workspace, id:Section, delta:-1|1): Workspace {
   const list=[...workspaceSections(workspace)];
-  const from=list.findIndex(s=>s.id===id),to=from+delta;
-  if(from<0 || to<0 || to>=list.length) return workspace;
+  const from=list.findIndex(s=>s.id===id);
+  if(from<0) return workspace;
+  // Sections from other workspaces can sit between these in the list, and don't count as neighbors.
+  let to=from+delta;
+  while(to>=0 && to<list.length && sectionSpace(list[to])!==sectionSpace(list[from])) to+=delta;
+  if(to<0 || to>=list.length) return workspace;
   [list[from],list[to]]=[list[to],list[from]];
   return {...workspace,sections:list};
 }
@@ -280,7 +383,8 @@ export function restoreSection(workspace:Workspace, id:Section): Workspace {
 }
 export function deleteSection(workspace:Workspace, id:Section, moveNotesTo?:Section): Workspace {
   const list=workspaceSections(workspace);
-  if(list.length<=1) throw new Error('Keep at least one section.');
+  const target=list.find(s=>s.id===id);
+  if(target && list.filter(s=>sectionSpace(s)===sectionSpace(target)).length<=1) throw new Error('Keep at least one section.');
   const hasContent=workspace.notes.some(n=>n.section===id) || !!workspace.uploads?.some(u=>u.section===id);
   if(hasContent && (moveNotesTo===id || !list.some(s=>s.id===moveNotesTo))) throw new Error('Choose a section for this section’s notes.');
   return {...workspace,sections:list.filter(s=>s.id!==id),removedSections:isBuiltInSection(id) ? [...(workspace.removedSections || []),id] : workspace.removedSections,folders:workspace.folders?.filter(f=>f.section!==id),uploads:workspace.uploads?.map(u=>u.section===id ? {...u,section:moveNotesTo!} : u),notes:workspace.notes.map(n=>n.section===id ? {...n,section:moveNotesTo!,folderId:undefined} : n)};

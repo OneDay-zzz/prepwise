@@ -1,8 +1,16 @@
-import { defaultSections, validateWorkspace, type Note, type Section, type SectionConfig } from './model.ts';
+import { defaultSections, validateWorkspace, type DocTab, type Note, type Section, type SectionConfig } from './model.ts';
 
 // YAML-compatible JSON scalar values make metadata portable and safely escapable.
 // Only parse our explicitly marked frontmatter; unrelated Markdown stays untouched.
+const EXTENSIONS={text:'.txt',table:'.csv'} as const;
+/** The file type a document saves as. */
+export const noteExtension=(note: Pick<Note,'format'>)=>note.format ? EXTENSIONS[note.format] : '.md';
+/** The file type of a tab beyond a document's first. */
+export const tabExtension=(tab: Pick<DocTab,'kind'>)=>tab.kind==='table' ? '.csv' : tab.kind==='text' ? '.txt' : '.md';
+export const noteMimeType=(note: Pick<Note,'format'>)=>note.format==='table' ? 'text/csv' : note.format==='text' ? 'text/plain' : 'text/markdown';
+// Text and table files stay exactly what they are, so their labels live only in the workspace.
 export function noteToMarkdown(note: Note): string {
+  if(note.format) return note.body;
   if (!note.experience && !note.pinned && !note.marked && !note.tags?.length && !note.importance) return note.body;
   const fields: Record<string, unknown> = {section:note.section, title:note.title, pinned:!!note.pinned, marked:!!note.marked, tags:note.tags || []};
   if(note.importance) fields.importance=note.importance;

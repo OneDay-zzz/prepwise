@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { activeMention, threadTitle, applyChatChange, changeLines, chatWorkspace, contextItems, matchContext, messageContext, tokenTotal, diffCounts, diffHunks, lineDiff, modelName, undoChatChange } from '../src/doc-chat-model.ts';
-import { initialWorkspace, newNote } from '../src/model.ts';
+import { createSpace, initialWorkspace, newNote, spaceSections } from '../src/model.ts';
 import { chatMiddleware, claudeArgs, claudeEnv, createDocChat } from '../server/doc-chat.mjs';
 import { isLocalRequest } from '../server/github-checkpoints.mjs';
 
@@ -75,13 +75,58 @@ test('streams an answer, names the open doc, and sends the prompt on stdin',asyn
   assert.ok(realpathSync(path.dirname(path.dirname(run.cwd)))===realpathSync(path.dirname(directory)),'runs inside its data folder');
   assert.equal(existsSync(run.cwd),false,'the copy of the notes is removed afterwards');
 });
+test('chat can add documents and plans to another workspace',async()=>{
+  const {workspace:withGym,id,section}=createSpace(workspace(note('a','Heap','# Heap\n')),'Gym','green','fitness');
+  const diet=spaceSections(withGym,id)[1].id;
+  const script=`
+fs.writeFileSync('Gym/Diet/Meals.md','# Meals');
+const plans=JSON.parse(fs.readFileSync('_plans.json','utf8'));
+plans.push({kind:'event',title:'Leg day',date:'2026-11-06',time:'09:00',duration:60,space:${JSON.stringify(id)}});
+fs.writeFileSync('_plans.json',JSON.stringify(plans));
+${ok}`;
+  const {done}=await ask(script,{noteId:'a',message:'edit',workspace:withGym});
+  const fresh=done.changes.find(c=>c.kind==='new');
+  assert.deepEqual([fresh.title,fresh.section],['Meals',diet]);
+  const plans=JSON.parse(done.changes.find(c=>c.kind==='plans').after);
+  assert.deepEqual([plans[0].kind,plans[0].space],['event',id]);
+  assert.ok(section);
+});
+
+test('a new .csv or .txt becomes a document of that format, but gallery files and whiteboard text do not',async()=>{
+  const script=`
+fs.mkdirSync('LeetCode notes/_gallery',{recursive:true});
+fs.writeFileSync('LeetCode notes/_gallery/upload.txt','x');
+fs.writeFileSync('LeetCode notes/Heap.whiteboard.txt','x');
+fs.writeFileSync('LeetCode notes/Lifts.csv','a,b\\n');
+fs.writeFileSync('LeetCode notes/Plain.txt','hello');
+${ok}`;
+  const {done}=await ask(script,{noteId:'a',message:'edit',workspace:workspace(note('a','Heap','# Heap\n'))});
+  assert.deepEqual(done.changes.map(c=>[c.kind,c.title,c.format,c.after]),[['new','Lifts','table','a,b\n'],['new','Plain','text','hello']]);
+});
+
+test('chat can read and edit a document’s other tabs',async()=>{
+  const script=`
+fs.writeFileSync('LeetCode notes/Plan - Lifts.csv',fs.readFileSync('LeetCode notes/Plan - Lifts.csv','utf8')+'1,2\\n');
+${ok}`;
+  const {done}=await ask(script,{noteId:'a',message:'edit',workspace:workspace(note('a','Plan','# Plan\n',{tabs:[{id:'t',name:'Lifts',kind:'table',body:'x,y\n'}]}))});
+  assert.deepEqual(done.changes.map(c=>[c.kind,c.noteId,c.tabId,c.title,c.before,c.after]),[['edit','a','t','Plan / Lifts','x,y\n','x,y\n1,2\n']]);
+});
+
+test('edits to a table document come back without metadata',async()=>{
+  const script=`
+fs.writeFileSync('LeetCode notes/Log.csv',fs.readFileSync('LeetCode notes/Log.csv','utf8')+'1,2\\n');
+${ok}`;
+  const {done}=await ask(script,{noteId:'a',message:'edit',workspace:workspace(note('a','Log','x,y\n',{format:'table',pinned:true}))});
+  assert.deepEqual(done.changes.map(c=>[c.kind,c.noteId,c.after]),[['edit','a','x,y\n1,2\n']]);
+});
+
 test('reports edits and new files, keeping metadata and ignoring deletions and other files',async()=>{
   const script=`
 fs.writeFileSync('LeetCode notes/Heap.md',fs.readFileSync('LeetCode notes/Heap.md','utf8')+'more\\n');
 fs.writeFileSync('LeetCode notes/Tagged.md',fs.readFileSync('LeetCode notes/Tagged.md','utf8').replace('old','new'));
 fs.unlinkSync('LeetCode notes/Gone.md');
 fs.writeFileSync('LeetCode notes/Topics/Fresh.md','# Fresh');
-fs.writeFileSync('LeetCode notes/stray.txt','x');
+fs.writeFileSync('LeetCode notes/stray.log','x');
 ${ok}`;
   const {done}=await ask(script,{noteId:'a',message:'edit',workspace:workspace(note('a','Heap','# Heap\n'),note('b','Tagged','old',{tags:['x']}),note('c','Gone','bye'),note('d','Same','same'))});
   assert.equal(done.changes.length,3);

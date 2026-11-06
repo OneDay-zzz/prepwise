@@ -3,7 +3,7 @@ import { isPdfFile, workspaceSections, type Note, type Plan, type Section, type 
 export type ChatChangeStatus = 'applied' | 'conflict' | 'discarded' | 'undone' | 'missing';
 /** The chat that covers everything rather than one document. */
 export const WORKSPACE_CHAT = 'workspace';
-export type ChatChange = {kind:'edit'|'new'|'plans'; noteId:string; title:string; before:string; after:string; section?:Section; folderId?:string; status?:ChatChangeStatus};
+export type ChatChange = {tabId?:string; format?:Note['format']; kind:'edit'|'new'|'plans'; noteId:string; title:string; before:string; after:string; section?:Section; folderId?:string; status?:ChatChangeStatus};
 export const chatModels = [{id:'fable',label:'Fable'},{id:'opus',label:'Opus'},{id:'sonnet',label:'Sonnet'},{id:'haiku',label:'Haiku'}] as const;
 export type ChatModel = typeof chatModels[number]['id'];
 export const defaultChatModel: ChatModel = 'opus';
@@ -65,7 +65,7 @@ export type ChatContext = {notes:string[]; uploads:string[]; plans:boolean; resu
 export function contextItems(workspace: Workspace): ContextItem[] {
   const sections=new Map(workspaceSections(workspace).map(s=>[s.id,s.name]));
   return [
-    {kind:'plans',id:'plans',title:'Calendar and plans',detail:'Tasks, interviews, milestones'},
+    {kind:'plans',id:'plans',title:'Calendar and plans',detail:'Tasks, events, milestones'},
     ...(workspace.resume ? [{kind:'resume',id:'resume',title:workspace.resume.name,detail:'Resume'} as ContextItem] : []),
     ...workspace.notes.filter(n=>sections.has(n.section)).map(n=>({kind:'note',id:n.id,title:n.title || 'Untitled note',detail:sections.get(n.section)!}) as ContextItem),
     ...(workspace.uploads || []).filter(u=>sections.has(u.section)).map(u=>({kind:'upload',id:u.id,title:u.name,detail:`${sections.get(u.section)} · ${isPdfFile(u) ? 'PDF' : 'File'}`}) as ContextItem),
@@ -93,6 +93,9 @@ export function messageContext(text: string, picked: ContextItem[]): ChatContext
 }
 export function tokenTotal(usage: ChatUsage) {return usage.input+usage.cacheWrite+usage.cacheRead+usage.output;}
 /** Puts a chat edit into the workspace. A document that changed while Claude worked is never overwritten unless forced. */
+// A change is to a document's body, or to one of its other tabs.
+const changedText=(note:Note,change:ChatChange)=>change.tabId ? note.tabs?.find(tab=>tab.id===change.tabId)?.body : note.body;
+const withText=(note:Note,change:ChatChange,text:string,now:string):Note=>change.tabId ? {...note,updatedAt:now,tabs:note.tabs?.map(tab=>tab.id===change.tabId ? {...tab,body:text} : tab)} : {...note,body:text,updatedAt:now};
 export function applyChatChange(workspace: Workspace, change: ChatChange, force = false, now = new Date().toISOString()): Result {
   if(change.kind==='plans') {
     const current=JSON.stringify(workspace.plans);
@@ -103,14 +106,16 @@ export function applyChatChange(workspace: Workspace, change: ChatChange, force 
   if(change.kind==='new') {
     if(workspace.notes.some(n=>n.id===change.noteId)) return {workspace,ok:true,status:'applied'};
     const folderId=workspace.folders?.some(f=>f.id===change.folderId && f.section===change.section) ? change.folderId : undefined;
-    const note:Note={id:change.noteId,section:change.section!,title:change.title,body:change.after,updatedAt:now,ready:false,...(folderId ? {folderId} : {})};
+    const note:Note={id:change.noteId,section:change.section!,title:change.title,body:change.after,updatedAt:now,ready:false,...(folderId ? {folderId} : {}),...(change.format ? {format:change.format} : {})};
     return {workspace:{...workspace,notes:[note,...workspace.notes]},ok:true,status:'applied'};
   }
   const note=workspace.notes.find(n=>n.id===change.noteId);
   if(!note) return {workspace,ok:false,status:'missing'};
-  if(note.body===change.after) return {workspace,ok:true,status:'applied'};
-  if(note.body!==change.before && !force) return {workspace,ok:false,status:'conflict'};
-  return {workspace:{...workspace,notes:workspace.notes.map(n=>n===note ? {...n,body:change.after,updatedAt:now} : n)},ok:true,status:'applied'};
+  const body=changedText(note,change);
+  if(body===undefined) return {workspace,ok:false,status:'missing'};
+  if(body===change.after) return {workspace,ok:true,status:'applied'};
+  if(body!==change.before && !force) return {workspace,ok:false,status:'conflict'};
+  return {workspace:{...workspace,notes:workspace.notes.map(n=>n===note ? withText(note,change,change.after,now) : n)},ok:true,status:'applied'};
 }
 /** Takes an edit back, but only while the document still has exactly what the edit left there. */
 export function undoChatChange(workspace: Workspace, change: ChatChange, now = new Date().toISOString()): Result {
@@ -120,23 +125,24 @@ export function undoChatChange(workspace: Workspace, change: ChatChange, now = n
   }
   const note=workspace.notes.find(n=>n.id===change.noteId);
   if(!note) return {workspace,ok:false,status:'missing'};
-  if(note.body!==change.after) return {workspace,ok:false,status:'applied'};
+  if(changedText(note,change)!==change.after) return {workspace,ok:false,status:'applied'};
   if(change.kind==='new') return {workspace:{...workspace,notes:workspace.notes.filter(n=>n!==note)},ok:true,status:'undone'};
-  return {workspace:{...workspace,notes:workspace.notes.map(n=>n===note ? {...n,body:change.before,updatedAt:now} : n)},ok:true,status:'undone'};
+  return {workspace:{...workspace,notes:workspace.notes.map(n=>n===note ? withText(note,change,change.before,now) : n)},ok:true,status:'undone'};
 }
 /** What a chat sends: drawings can be large, so a whiteboard goes as just the text written on it. */
 export function chatWorkspace(workspace: Workspace): {workspace:Workspace; boards:Record<string,string>} {
   const boards:Record<string,string>={};
+  const written=(scene:Note['scene'])=>(scene?.elements || []).filter(e=>e?.type==='text' && !e.isDeleted && e.text).map(e=>e.text);
   for(const note of workspace.notes) {
-    const text=(note.scene?.elements || []).filter(e=>e?.type==='text' && !e.isDeleted && e.text).map(e=>e.text).join('\n');
+    const text=[...written(note.scene),...(note.tabs || []).flatMap(tab=>written(tab.scene))].join('\n');
     if(text) boards[note.id]=text;
   }
-  return {workspace:{...workspace,notes:workspace.notes.map(({scene:_scene,...note})=>note)},boards};
+  return {workspace:{...workspace,notes:workspace.notes.map(({scene:_scene,...note})=>note.tabs ? {...note,tabs:note.tabs.map(({scene:_tabScene,...tab})=>tab)} : note)},boards};
 }
 /** The lines a change's details show: the text of a document, or one line for each plan. */
 export function changeLines(change: ChatChange) {
   if(change.kind!=='plans') return lineDiff(change.before,change.after);
-  const names:Record<Plan['kind'],string>={task:'Prep task',interview:'Interview',milestone:'Milestone'};
+  const names:Record<Plan['kind'],string>={task:'Task',interview:'Interview',milestone:'Milestone',event:'Event'};
   const text=(json:string)=>(JSON.parse(json) as Plan[]).map(p=>`${names[p.kind]} · ${p.date}${p.time ? ` ${p.time}` : ''} · ${p.title}${p.done ? ' (done)' : ''}`).join('\n');
   return lineDiff(text(change.before),text(change.after));
 }
